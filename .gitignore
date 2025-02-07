@@ -1,4 +1,5 @@
 nohup.out
 data/
 logs/
+venv/
 __pycache__/
