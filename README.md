@@ -60,9 +60,9 @@ Columns: [timestamp, low, high, open, close, volume]
 Each row represents an OHLC data point for the specified cryptocurrency and time interval.
 
 ## Running as a Background Process
-To run the script in the background (even after disconnecting SSH), use:
+To run the script in the background:
 ```bash
-nohup bash tools/download.sh &
+nohup bash tools/download.sh & disown
 ```
 Monitor logs:
 ```bash
