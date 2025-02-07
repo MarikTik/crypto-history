@@ -4,23 +4,31 @@
 
  
 START_DATE="2021-05-10"
-END_DATE="2024-01-01"
+END_DATE="2025-07-06"
 GRANULARITY="60"
 
 # List of 10 cryptocurrencies (popular & volatile mix)
 coins=(
-    "BTC-USDT"   # Bitcoin 
+    "BTC-USDT"   # Bitcoin
     "ETH-USDT"   # Ethereum
     "SOL-USDT"   # Solana
     "DOGE-USDT"  # Dogecoin
     "SHIB-USDT"  # Shiba Inu
     "AVAX-USDT"  # Avalanche
     "XRP-USDT"   # XRP
-    "LUNA-USDT"  # Terra Luna
     "MATIC-USDT" # Polygon
     "PEPE-USDT"  # Pepe Coin
+    "XCN-USDT"   # Chain
+    "NEON-USDT"  # Neon EVM
+    "ACH-USDT"   # Alchemy Pay
+    "ADA-USDT"   # Cardano
+    "DOT-USDT"   # Polkadot
+    "LTC-USDT"   # Litecoin
+    "BNB-USDT"   # Binance Coin
+    "ATOM-USDT"  # Cosmos
+    "FIL-USDT"   # Filecoin
+    "SAND-USDT"  # The Sandbox
 )
-
 rm -r data
 rm -r logs
 mkdir logs
