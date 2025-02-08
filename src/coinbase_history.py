@@ -79,6 +79,11 @@ class CoinbaseCandleHistory:
                }
 
                async with session.get(url, params=params) as response:
+                    
+                    if response.status == 404:
+                         logging.critical(f"❌ {symbol} was not found in database")
+                         return
+
                     if response.status != 200:
                          logging.error(f"⚠️ Error fetching data ({response.status}): {await response.text()}")
 
