@@ -24,20 +24,17 @@ coins=(
     "ADA-USDT"   # Cardano
     "DOT-USDT"   # Polkadot
     "LTC-USDT"   # Litecoin
-    "BNB-USDT"   # Binance Coin
-    "ATOM-USDT"  # Cosmos
+    "TOSHI-USDT" # Meme coin
     "FIL-USDT"   # Filecoin
     "SAND-USDT"  # The Sandbox
 )
-rm -r data
 rm -r logs
 mkdir logs
-mkdir data
 
  
 for coin in "${coins[@]}"; do
     echo "🚀 Fetching $coin ..."
-    python3 src/fetch_coin.py "$coin" "$START_DATE" "$END_DATE" "$GRANULARITY" > "logs/$coin.log" 2>&1
+    python3 src/fetch_coin.py "$coin" "$START_DATE" "$END_DATE" "$GRANULARITY" >> "logs/$coin.log" 2>&1
     echo "✅ Completed $coin"
     sleep 5   
 done
