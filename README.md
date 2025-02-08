@@ -53,7 +53,7 @@ python3 src/fetch_coin.py SOL-USDT 2023-01-01 2024-01-01 3600
 ```
 
 ## Output Format
-The fetched data is stored as a Parquet file with the following structure:
+The fetched data is stored as a sequence of Parquet files with the following structure:
 ```plaintext
 Columns: [timestamp, low, high, open, close, volume]
 ```
