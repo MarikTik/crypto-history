@@ -1,6 +1,6 @@
 nohup.out
 data/
-candle/data
+candle_data
 logs/
 venv/
 __pycache__/
