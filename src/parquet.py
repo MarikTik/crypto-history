@@ -23,8 +23,9 @@ Usage:
         ("volume", pa.float64()),
         ("timestamp", pa.timestamp("s"))
     ])
-    parquet = Parquet.from_csv("data.csv", schema, sort_by="time")
-    parquet.dump("output.parquet")
+
+    nonlocal gen
+    Parquet.from_generator(gen=gen, columns=COLUMNS, schema=SCHEMA, sort_by=SORT_KEY).to(Path(dir) / symbol)
 """
 
 import pandas as pd
@@ -117,7 +118,7 @@ class Parquet:
             name_template (str): Prefix for file naming.
         """
         if not self.buffer:
-            return  # No data to write
+            return  
 
         df = pd.DataFrame(self.buffer, columns=self.columns)
         
@@ -132,7 +133,7 @@ class Parquet:
         pq.write_table(table, output_file, compression="snappy")
         print(f"Saved chunk to {output_file}")
 
-        # Reset buffer
+        
         self.buffer.clear()
         self.total_rows = 0
         self.file_idx += 1
