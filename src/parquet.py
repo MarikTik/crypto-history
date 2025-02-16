@@ -30,7 +30,7 @@ Usage:
 import pandas as pd
 import pyarrow.parquet as pq
 import pyarrow as pa
-import os
+import psutil
 from pathlib import Path
 from typing import Generator, AsyncGenerator, List
 
@@ -64,69 +64,91 @@ class Parquet:
         instance.sort_by = sort_by
         return instance
 
-    async def to(self, path: Path, name_template: str = "") -> None:
+    async def to(self, path: Path, name_template: str = "data_", max_ram_usage: float = 0.5) -> None:
         """
-        Writes streamed data to Parquet chunks in a directory.
+        Streams data and stores it efficiently, keeping it in memory until it exceeds the RAM threshold,
+        at which point it writes to a file and clears memory.
 
         Args:
-            path (Path): Directory where Parquet chunks will be stored.
-            name_template (str): A template for the output files representing each chunk
+            path (Path): Directory where Parquet files will be stored.
+            name_template (str): Prefix for the output files.
+            max_ram_usage (float): Fraction of total RAM that can be used before writing to disk.
         """
         path.mkdir(parents=True, exist_ok=True)
-        chunk_idx = 0
+        self.buffer = []
+        self.file_idx = 0
+        self.available_ram = psutil.virtual_memory().total * max_ram_usage  # Allowed RAM usage
+        self.total_rows = 0
 
         if isinstance(self.gen, AsyncGenerator):
             async for chunk in self.gen:
-                self._write_chunk(chunk, path / f"{name_template}{chunk_idx}.parquet")
-                chunk_idx += 1
+                self._buffer_chunk(chunk, path, name_template)
         elif isinstance(self.gen, Generator):
             for chunk in self.gen:
-                self._write_chunk(chunk, path / f"{name_template}{chunk_idx}.parquet")
-                chunk_idx += 1  
+                self._buffer_chunk(chunk, path, name_template)
         else:
             raise TypeError("Illegal generator type")
 
-    def list_chunks(self, path: Path):
+        self._flush_buffer(path, name_template)
+        print("All data saved successfully.")
+
+    def _buffer_chunk(self, chunk: List[List], path: Path, name_template: str):
         """
-        Lists all Parquet chunk files in the directory.
+        Adds a new chunk to the memory buffer. If the memory threshold is exceeded, it writes to disk.
 
         Args:
-            path (Path): Directory path where chunks are stored.
+            chunk (List[List]): Data chunk from generator.
+            path (Path): Directory for saving files.
+            name_template (str): Prefix for file naming.
+        """
+        self.buffer.extend(chunk)
+        self.total_rows += len(chunk)
+        estimated_mem_usage = self.total_rows * len(self.columns) * 8  # Approximate memory usage
 
-        Returns:
-            list: List of chunk file paths.
+        if estimated_mem_usage > self.available_ram:
+            self._flush_buffer(path, name_template)
+
+    def _flush_buffer(self, path: Path, name_template: str):
         """
-        return sorted(path.glob("*.parquet"))
-    
-    def read_chunks(self, path: Path):
-        """
-        Reads Parquet chunk files sequentially (without loading everything into memory).
+        Writes buffered data to a Parquet file and clears the buffer.
 
         Args:
-            path (Path): Directory path where chunks are stored.
-
-        Yields:
-            pd.DataFrame: DataFrame for each chunk.
+            path (Path): Directory for saving files.
+            name_template (str): Prefix for file naming.
         """
-        for chunk_path in self.list_chunks(path):
-            yield pd.read_parquet(chunk_path)
+        if not self.buffer:
+            return  # No data to write
 
-
-    def _write_chunk(self, chunk: List[List], path: Path):
-        """
-        Writes a single chunk of data to a Parquet file.
-
-        Args:
-            chunk (List[List]): List of data rows.
-            path (Path): File path where the Parquet chunk will be stored.
-        """
-        df = pd.DataFrame(chunk, columns=self.columns)
-
-        if ("time" in df.columns):
+        df = pd.DataFrame(self.buffer, columns=self.columns)
+        
+        if "time" in df.columns:
             df["timestamp"] = pd.to_datetime(df["time"], unit="s", utc=True)
 
         if self.sort_by and self.sort_by in df.columns:
             df = df.sort_values(by=self.sort_by, ascending=True)
 
         table = pa.Table.from_pandas(df, schema=self.schema)
-        pq.write_table(table, path, compression="snappy")
+        output_file = path / f"{name_template}{self.file_idx}.parquet"
+        pq.write_table(table, output_file, compression="snappy")
+        print(f"Saved chunk to {output_file}")
+
+        # Reset buffer
+        self.buffer.clear()
+        self.total_rows = 0
+        self.file_idx += 1
+
+
+    def read(self, path: Path) -> pd.DataFrame:
+        """
+        Reads Parquet file
+
+        Args: 
+            path (Path): File path where the data is stored
+        
+        Returns:
+            pd.DataFrame: DataFrame of the data
+ 
+        """
+        return pd.read_parquet(path)
+    
+    
