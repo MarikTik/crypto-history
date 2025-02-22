@@ -40,7 +40,7 @@ import aiohttp
 
 
 COINBASE_CANDLES_URL = "https://api.exchange.coinbase.com/products/{}/candles"
-COINBASE_REQUEST_LIMIT_PER_SECOND = 7  # Increase up to 10 at your own risk
+COINBASE_RATE_LIMIT = 1/7  # Increase up to 10 at your own risk
 MAX_CANDLES = 300 # Max Candles allowed per request 
 FUTURE_OFFSET = 10000 # Offset for downloading data continuously 
 
@@ -105,13 +105,17 @@ class CoinbaseCandleHistory:
           Continuously fetches historical and live cryptocurrency data for multiple coins.
 
           Args:
-            symbols (list): List of cryptocurrency pairs (e.g., ["BTC-USDT", "ETH-USDT"]).
-            start_date (str): The start date in ISO format (YYYY-MM-DD)
-            end_date (Optional[str]): The end date in ISO format (YYYY-MM-DD). If None, fetches indefinitely.
-            granularity (int): Candle interval in seconds (defaults to 60s).
+               symbols (list): List of cryptocurrency pairs (e.g., ["BTC-USDT", "ETH-USDT"]).
+               start_date (str): The start date in ISO format (YYYY-MM-DD)
+               end_date (Optional[str]): The end date in ISO format (YYYY-MM-DD). If None, fetches indefinitely.
+               granularity (int): Candle interval in seconds (defaults to 60s).
 
           Yields:
             dict: {'symbol': symbol, 'data': List[List[Union[float, int]]]} containing OHLCV data.
+
+          Warning: 
+               `fetch(symbols, ...)` doesn't check for duplicated symbols, 
+          
           """
           async with aiohttp.ClientSession() as session:
                now = datetime.now(timezone.utc)  # ✅ FIXED: utcnow() deprecated
@@ -136,7 +140,6 @@ class CoinbaseCandleHistory:
                               session, symbol, last_fetched[symbol], end_date, granularity
                          ):
                               last_fetched[symbol] = datetime.fromtimestamp(update["data"][-1][0], tz=timezone.utc)
-                              yield update  # ✅ Yields updates instead of processing them here
-
-                    await asyncio.sleep(COINBASE_REQUEST_LIMIT_PER_SECOND)  # Move to the next coin
+                              yield update  # Yields updates instead of processing them here
+                              await asyncio.sleep(COINBASE_RATE_LIMIT)  # sleep per coin (avoids hitting rate limit if fetching multiple coins)
 
