@@ -1,21 +1,34 @@
 """
 coinbase_candle_history.py
 
-This module provides an asynchronous method to fetch historical cryptocurrency 
-candle data from the Coinbase API. It handles rate limits, retries on failures, 
-and logs progress.
+This module provides an asynchronous method to fetch both historical and continuous 
+real-time cryptocurrency candle data from the Coinbase API. It handles rate limits, 
+retries on failures, and logs progress while ensuring efficient data retrieval.
+
+Features:
+    - Fetches historical OHLCV (Open, High, Low, Close, Volume) candlestick data in batches.
+    - Supports fetching multiple cryptocurrency pairs simultaneously.
+    - Allows continuous fetching when no end date is provided, ensuring up-to-date market data.
+    - Implements rate limiting and exponential backoff for API stability.
+    - Uses async generators to efficiently stream large datasets without excessive memory usage.
 
 Classes:
-     - CoinbaseCandleHistory: Provides a static method `fetch` to retrieve historical 
-     candle data asynchronously while respecting API constraints.
+    - CoinbaseCandleHistory: Provides two static methods:
+        - `fetch_timeframe`: Fetches a specific range of historical data in chunks.
+        - `fetch`: Manages multi-coin fetching, supporting both fixed and continuous retrieval.
 
-Usage:
-     import aiohttp
-     from coinbase_candle_history import CoinbaseCandleHistory
+Usage Example:
+    import aiohttp
+    from coinbase_candle_history import CoinbaseCandleHistory
 
-     async with aiohttp.ClientSession() as session:
-          async for data_chunk in CoinbaseCandleHistory.fetch(session, "BTC-USDT", "2021-01-01", "2022-01-01"):
-               process(data_chunk)  # Handle the received chunk
+    async with aiohttp.ClientSession() as session:
+        async for data_chunk in CoinbaseCandleHistory.fetch(session, ["BTC-USDT", "ETH-USDT"], "2021-01-01"):
+            process(data_chunk)  # Handle the received chunk (e.g., store in a database)
+
+Notes:
+    - The generator-based design ensures efficient handling of large datasets without consuming too much memory.
+    - When `end_date` is not provided, the fetch function runs indefinitely, keeping the data updated in real time.
+    - The function supports different granularity options (1m, 5m, 15m, 1h, 6h, 1d).
 """
 
 
