@@ -5,7 +5,7 @@ from pathlib import Path
 import pyarrow as pa
 
 from parser import Parser
-from coinbase_history import CoinbaseCandleHistory
+from coinbase_candle_history import CoinbaseCandleHistory
 from parquet import Parquet
 
 SCHEMA = pa.schema([
