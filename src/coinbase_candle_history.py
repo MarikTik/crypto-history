@@ -20,93 +20,110 @@ Usage:
 
 
 from datetime import datetime, timezone, timedelta
+from typing import Optional, List, AsyncGenerator, Dict
 import asyncio
-import random
 import logging
+import aiohttp
+
 
 COINBASE_CANDLES_URL = "https://api.exchange.coinbase.com/products/{}/candles"
 COINBASE_REQUEST_LIMIT_PER_SECOND = 7  # Increase up to 10 at your own risk
 MAX_CANDLES = 300 # Max Candles allowed per request 
+FUTURE_OFFSET = 10000 # Offset for downloading data continuously 
+
 
 class CoinbaseCandleHistory:
      @staticmethod
-     async def fetch(session, symbol, start_date, end_date=datetime.now(), granularity=60):
+     async def fetch_timeframe(
+          session: aiohttp.ClientSession,
+          symbol: str,
+          start_time: datetime,
+          end_time: datetime,
+          granularity: int = 60) -> AsyncGenerator[Dict[str, List[List[float | int]]], None]:
           """
-          Asynchronously fetches historical cryptocurrency candle data from the Coinbase API.
-
-          This function retrieves data in chunks (Oldest → Newest) while handling rate limits and errors.
+          Fetches a specific time range of cryptocurrency candle data from Coinbase API.
 
           Args:
-               session (aiohttp.ClientSession): An active aiohttp session to send requests.
+               session (aiohttp.ClientSession): The aiohttp session.
                symbol (str): The cryptocurrency pair (e.g., "BTC-USDT").
-               start_date (str): The start date in ISO format (YYYY-MM-DD).
-               end_date (str): The end date in ISO format (YYYY-MM-DD).
-               granularity (int, optional): The interval for candles in seconds. 
-                    Defaults to 60 (1-minute candles).
-                    Options: 60, 300, 900, 3600, 21600, 86400 (1m, 5m, 15m, 1h, 6h, 1d).
+               start_time (datetime): The starting point for fetching data.
+               end_time (datetime): The ending point for fetching data.
+               granularity (int): The candle interval in seconds (defaults to 60s).
 
           Yields:
-               List[List]: A chunk of up to 300 OHLCV candle data points.
-
-          Logging:
-               - Errors (API failures) are logged with `logging.error()`.
-               - Critical failures (max retries exceeded) are logged with `logging.critical()`.
-               - Retry attempts are logged at `logging.debug()` level.
-               - Successfully downloaded chunks are logged with `logging.info()`.
-
-          Notes:
-               - Exponential backoff is applied in case of API failures.
-               - Each request retrieves at most 300 candles.
-               - The function respects Coinbase’s rate limit of 10 requests per second.
-               - Uses a retry mechanism with a cap of 5 retries per failed request.
+               dict: {'symbol': symbol, 'data': List[List]} containing fetched OHLCV data.
           """
           url = COINBASE_CANDLES_URL.format(symbol)
           chunk_size = timedelta(minutes=MAX_CANDLES)
 
-          start_date = datetime.fromisoformat(start_date).replace(tzinfo=timezone.utc)
-          if type(end_date) is str:
-               end_date = datetime.fromisoformat(end_date).replace(tzinfo=timezone.utc)
+          current_start = start_time
+          current_end = min(current_start + chunk_size, end_time)
 
-          current_start = start_date
-          retry_attempts = 0
+          params = {
+               "start": current_start.isoformat(),
+               "end": current_end.isoformat(),
+               "granularity": granularity
+          }
 
-          while current_start < end_date:
-               current_end = min(current_start + chunk_size, end_date)
+          async with session.get(url, params=params) as response:
+               if response.status == 404:
+                    logging.critical(f"❌ {symbol} not found in database.")
+                    return
 
-               params = {
-                    "start": current_start.isoformat(),
-                    "end": current_end.isoformat(),
-                    "granularity": granularity
-               }
+               if response.status != 200:
+                    logging.error(f"⚠️ Error fetching {symbol}: ({response.status}) {await response.text()}")
+                    return
 
-               async with session.get(url, params=params) as response:
-                    
-                    if response.status == 404:
-                         logging.critical(f"❌ {symbol} was not found in database")
-                         return
+               data = await response.json()
+               if data:
+                    logging.info(f"📊 Downloaded {len(data)} candles for {symbol}: {current_start} → {current_end}")
+                    yield {"symbol": symbol, "data": data}
 
-                    if response.status != 200:
-                         logging.error(f"⚠️ Error fetching data ({response.status}): {await response.text()}")
+               else:
+                    logging.info(f"⚠️ No data for {symbol}: {current_start} → {current_end}, skipping.")
 
-                         # retry_attempts += 1
-                         # if retry_attempts > 5:  # Prevent infinite retries
-                         #      logging.critical(f"❌ Skipping {current_start} → {current_end} after too many failures.")
-                         #      current_start = current_end
-                         #      continue
-                         
-                         # wait_time = min(2 ** retry_attempts, 60) + random.uniform(0, 1)  # Exponential backoff
-                         # logging.debug(f"⏳ Retrying in {wait_time:.2f} seconds...")
-                         # await asyncio.sleep(wait_time)
-                         # continue  # Retry the same request
-                    
-                    # retry_attempts = 0  # Reset on success
+     @staticmethod
+     async def fetch(
+          symbols: List[str],
+          start_date: str,
+          end_date: Optional[str] = None,
+          granularity: int = 60) -> AsyncGenerator[Dict[str, List[List[float | int]]], None]:
+          """
+          Continuously fetches historical and live cryptocurrency data for multiple coins.
 
-                    data = await response.json()
-                    if data:
-                         yield data  
-                    else:
-                         logging.info(f"⚠️ No data for {current_start} → {current_end}, skipping.")
+          Args:
+            symbols (list): List of cryptocurrency pairs (e.g., ["BTC-USDT", "ETH-USDT"]).
+            start_date (str): The start date in ISO format (YYYY-MM-DD)
+            end_date (Optional[str]): The end date in ISO format (YYYY-MM-DD). If None, fetches indefinitely.
+            granularity (int): Candle interval in seconds (defaults to 60s).
 
-               logging.info(f"📊 Downloaded candles for {current_start} → {current_end}")
-               current_start = current_end
-               await asyncio.sleep(1 / COINBASE_REQUEST_LIMIT_PER_SECOND)
+          Yields:
+            dict: {'symbol': symbol, 'data': List[List[Union[float, int]]]} containing OHLCV data.
+          """
+          async with aiohttp.ClientSession() as session:
+               now = datetime.now(timezone.utc)  # ✅ FIXED: utcnow() deprecated
+
+               # Default to fetching the last 7 days if no start date is given
+               if start_date is None:
+                    start_date = now - timedelta(days=7)
+               else:
+                    start_date = datetime.fromisoformat(start_date).replace(tzinfo=timezone.utc)
+
+               # If no end date is provided, set it to a far future time (simulate continuous fetch)
+               if end_date is None:
+                    end_date = now + timedelta(days=10000)  
+               else:
+                    end_date = datetime.fromisoformat(end_date).replace(tzinfo=timezone.utc)
+
+               last_fetched = {symbol: start_date for symbol in symbols}
+
+               while True:
+                    for symbol in symbols:
+                         async for update in CoinbaseCandleHistory.fetch_timeframe(
+                              session, symbol, last_fetched[symbol], end_date, granularity
+                         ):
+                              last_fetched[symbol] = datetime.fromtimestamp(update["data"][-1][0], tz=timezone.utc)
+                              yield update  # ✅ Yields updates instead of processing them here
+
+                    await asyncio.sleep(COINBASE_REQUEST_LIMIT_PER_SECOND)  # Move to the next coin
+
