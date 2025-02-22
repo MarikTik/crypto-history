@@ -3,3 +3,4 @@ asyncio
 pandas
 pyarrow
 coinbase-advanced-py
+deltalake
