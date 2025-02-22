@@ -30,7 +30,7 @@ MAX_CANDLES = 300 # Max Candles allowed per request
 
 class CoinbaseCandleHistory:
      @staticmethod
-     async def fetch(session, symbol, start_date, end_date, granularity=60):
+     async def fetch(session, symbol, start_date, end_date=datetime.now(), granularity=60):
           """
           Asynchronously fetches historical cryptocurrency candle data from the Coinbase API.
 
@@ -64,7 +64,8 @@ class CoinbaseCandleHistory:
           chunk_size = timedelta(minutes=MAX_CANDLES)
 
           start_date = datetime.fromisoformat(start_date).replace(tzinfo=timezone.utc)
-          end_date = datetime.fromisoformat(end_date).replace(tzinfo=timezone.utc)
+          if type(end_date) is str:
+               end_date = datetime.fromisoformat(end_date).replace(tzinfo=timezone.utc)
 
           current_start = start_date
           retry_attempts = 0
@@ -87,18 +88,18 @@ class CoinbaseCandleHistory:
                     if response.status != 200:
                          logging.error(f"⚠️ Error fetching data ({response.status}): {await response.text()}")
 
-                         retry_attempts += 1
-                         if retry_attempts > 5:  # Prevent infinite retries
-                              logging.critical(f"❌ Skipping {current_start} → {current_end} after too many failures.")
-                              current_start = current_end
-                              continue
+                         # retry_attempts += 1
+                         # if retry_attempts > 5:  # Prevent infinite retries
+                         #      logging.critical(f"❌ Skipping {current_start} → {current_end} after too many failures.")
+                         #      current_start = current_end
+                         #      continue
                          
-                         wait_time = min(2 ** retry_attempts, 60) + random.uniform(0, 1)  # Exponential backoff
-                         logging.debug(f"⏳ Retrying in {wait_time:.2f} seconds...")
-                         await asyncio.sleep(wait_time)
-                         continue  # Retry the same request
+                         # wait_time = min(2 ** retry_attempts, 60) + random.uniform(0, 1)  # Exponential backoff
+                         # logging.debug(f"⏳ Retrying in {wait_time:.2f} seconds...")
+                         # await asyncio.sleep(wait_time)
+                         # continue  # Retry the same request
                     
-                    retry_attempts = 0  # Reset on success
+                    # retry_attempts = 0  # Reset on success
 
                     data = await response.json()
                     if data:
