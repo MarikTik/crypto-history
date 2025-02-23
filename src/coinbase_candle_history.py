@@ -89,11 +89,11 @@ class CoinbaseCandleHistory:
 
                data = await response.json()
                if data:
-                    logging.info(f"📊 Downloaded {len(data)} candles for {symbol}: {current_start} → {current_end}")
+                    logging.debug(f"📊 Downloaded {len(data)} candles for {symbol}: {current_start} → {current_end}")
                     yield {"symbol": symbol, "data": data}
 
                else:
-                    logging.info(f"⚠️ No data for {symbol}: {current_start} → {current_end}, skipping.")
+                    logging.debug(f"⚠️ No data for {symbol}: {current_start} → {current_end}, skipping.")
 
      @staticmethod
      async def fetch(
