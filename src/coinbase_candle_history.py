@@ -100,9 +100,13 @@ class CoinbaseCandleHistory:
           symbols: List[str],
           start_date: str,
           end_date: Optional[str] = None,
-          granularity: int = 60) -> AsyncGenerator[Dict[str, str | List[List[float | int]]], None]:
+          granularity: int = 60
+     ) -> AsyncGenerator[Dict[str, str | List[List[float | int]]], None]:
           """
-          Continuously fetches historical and live cryptocurrency data for multiple coins.
+          Sequentially fetches historical and live cryptocurrency data for multiple coins.
+
+          Instead of switching between coins in every iteration, it completes fetching **one** 
+          coin up until today, then switches to the next.
 
           Args:
                symbols (list): List of cryptocurrency pairs (e.g., ["BTC-USDT", "ETH-USDT"]).
@@ -114,28 +118,26 @@ class CoinbaseCandleHistory:
             dict: {'symbol': symbol, 'data': List[List[Union[float, int]]]} containing OHLCV data.
 
           Warning: 
-               `fetch(symbols, ...)` doesn't check for duplicated symbols, 
-          
+               `fetch(symbols, ...)` doesn't check for duplicated symbols.
           """
     
           async with aiohttp.ClientSession() as session:
                now = datetime.now(timezone.utc)
                start_date = datetime.fromisoformat(start_date).replace(tzinfo=timezone.utc)
 
-               # If no end date is provided, set it to a far future time (simulate continuous fetch)
+               # If no end date is provided, simulate continuous fetch by setting it to today
                if end_date is None:
-                    end_date = now + timedelta(days=10000)  
+                    end_date = now  
                else:
                     end_date = datetime.fromisoformat(end_date).replace(tzinfo=timezone.utc)
 
-               last_fetched = {symbol: start_date for symbol in symbols}
-
-               while True:
-                    for symbol in symbols:
+               for symbol in symbols:  # 🔹 Process each symbol completely before moving to the next
+                    last_fetched = start_date
+                    
+                    while last_fetched < end_date:
                          async for update in CoinbaseCandleHistory.fetch_timeframe(
-                              session, symbol, last_fetched[symbol], end_date, granularity
+                              session, symbol, last_fetched, end_date, granularity
                          ):
-                              last_fetched[symbol] = datetime.fromtimestamp(update["data"][0][0], tz=timezone.utc)
-                              yield update  # Yields updates instead of processing them here
-                              await asyncio.sleep(COINBASE_RATE_LIMIT)  # sleep per coin (avoids hitting rate limit if fetching multiple coins)
-
+                              last_fetched = datetime.fromtimestamp(update["data"][0][0], tz=timezone.utc)  # 🔹 Update to last fetched timestamp
+                              yield update  # ✅ Yields data as it arrives
+                              await asyncio.sleep(COINBASE_RATE_LIMIT)  # 🔹 Avoid rate limiting
