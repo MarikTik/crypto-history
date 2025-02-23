@@ -4,3 +4,4 @@ pandas
 pyarrow
 coinbase-advanced-py
 deltalake
+duckdb
