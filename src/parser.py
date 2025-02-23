@@ -48,13 +48,13 @@ class Parser:
      def parse(self):
           """Parse the command-line arguments."""
           args = self.parser.parse_args()
-
-         
+          
           symbols = []
           if Path(args.name_or_file).is_file():
                with open(args.name_or_file, "r") as f:
                     symbols = [line.strip() for line in f.readlines() if line.strip()]
-          else:
+          elif "-USD" in args.name_or_file:
                symbols = [args.name_or_file]  # Treat as a single symbol
-
+          else:
+               raise ValueError(f"symbol is neither path nor coin pair - {args.name_or_file}")
           return symbols, args.start_date, args.end_date, args.granularity, args.dir
