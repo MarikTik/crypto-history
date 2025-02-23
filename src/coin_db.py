@@ -1,5 +1,6 @@
 import pyarrow as pa
 import pyarrow.dataset as ds
+import duckdb
 from deltalake import write_deltalake
 from pathlib import Path
 from datetime import datetime, timezone
@@ -35,7 +36,7 @@ class CoinDB:
             if not data:
                 continue  # Skip if no new data
 
-            # 🔹 Determine timestamp and partition (year, month)
+            # Determine timestamp and partition (year, month)
             last_candle_ts = data[-1][0]  # Last row timestamp in batch
             timestamp = datetime.fromtimestamp(last_candle_ts, tz=timezone.utc)
             year, month = timestamp.strftime("%Y"), timestamp.strftime("%m")
@@ -44,12 +45,12 @@ class CoinDB:
             if key not in self.buffers:
                 self.buffers[key] = []
 
-            # 🔹 Check if we have switched to a new month
+            # Check if we have switched to a new month
             if symbol in active_month and active_month[symbol] != (year, month):
                 prev_year, prev_month = active_month[symbol]
                 await self._flush(symbol, prev_year, prev_month)  # 🔹 Flush previous month
 
-            # 🔹 Update active month for this symbol
+            # Update active month for this symbol
             active_month[symbol] = (year, month)
 
             self.buffers[key].extend(data)  # Append new data **after flushing previous month**
@@ -90,7 +91,7 @@ class CoinDB:
         # Clear the buffer for this month
         self.buffers[key] = []
 
-    def query(self, symbol: str, start_date: datetime, end_date: datetime):
+    def query(self, symbol: str, start_date: str | datetime, end_date: str | datetime):
         """
         Queries historical data efficiently using DuckDB.
 
@@ -102,7 +103,12 @@ class CoinDB:
         Returns:
             pd.DataFrame: Query results as a Pandas DataFrame.
         """
-        import duckdb
+
+
+        if type(start_date) is str:
+            start_date = datetime.fromisoformat(start_date).replace(tzinfo=timezone.utc)
+        if type(end_date) is str:
+            end_date = datetime.fromisoformat(end_date).replace(tzinfo=timezone.utc) 
 
         query = f"""
         SELECT * FROM read_parquet('{self._dir}/{symbol}/**/*.parquet')
