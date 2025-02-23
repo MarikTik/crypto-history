@@ -77,7 +77,7 @@ class CoinbaseCandleHistory:
                "end": current_end.isoformat(),
                "granularity": granularity
           }
-
+       
           async with session.get(url, params=params) as response:
                if response.status == 404:
                     logging.critical(f"❌ {symbol} not found in database.")
@@ -135,7 +135,7 @@ class CoinbaseCandleHistory:
                          async for update in CoinbaseCandleHistory.fetch_timeframe(
                               session, symbol, last_fetched[symbol], end_date, granularity
                          ):
-                              last_fetched[symbol] = datetime.fromtimestamp(update["data"][-1][0], tz=timezone.utc)
+                              last_fetched[symbol] = datetime.fromtimestamp(update["data"][0][0], tz=timezone.utc)
                               yield update  # Yields updates instead of processing them here
                               await asyncio.sleep(COINBASE_RATE_LIMIT)  # sleep per coin (avoids hitting rate limit if fetching multiple coins)
 
