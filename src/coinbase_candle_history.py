@@ -52,7 +52,7 @@ class CoinbaseCandleHistory:
           symbol: str,
           start_time: datetime,
           end_time: datetime,
-          granularity: int = 60) -> AsyncGenerator[Dict[str, List[List[float | int]]], None]:
+          granularity: int = 60) -> AsyncGenerator[Dict[str, str | List[List[float | int]]], None]:
           """
           Fetches a specific time range of cryptocurrency candle data from Coinbase API.
 
@@ -100,7 +100,7 @@ class CoinbaseCandleHistory:
           symbols: List[str],
           start_date: str,
           end_date: Optional[str] = None,
-          granularity: int = 60) -> AsyncGenerator[Dict[str, List[List[float | int]]], None]:
+          granularity: int = 60) -> AsyncGenerator[Dict[str, str | List[List[float | int]]], None]:
           """
           Continuously fetches historical and live cryptocurrency data for multiple coins.
 
