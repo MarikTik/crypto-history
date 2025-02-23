@@ -117,14 +117,10 @@ class CoinbaseCandleHistory:
                `fetch(symbols, ...)` doesn't check for duplicated symbols, 
           
           """
+    
           async with aiohttp.ClientSession() as session:
-               now = datetime.now(timezone.utc)  # ✅ FIXED: utcnow() deprecated
-
-               # Default to fetching the last 7 days if no start date is given
-               if start_date is None:
-                    start_date = now - timedelta(days=7)
-               else:
-                    start_date = datetime.fromisoformat(start_date).replace(tzinfo=timezone.utc)
+               now = datetime.now(timezone.utc)
+               start_date = datetime.fromisoformat(start_date).replace(tzinfo=timezone.utc)
 
                # If no end date is provided, set it to a far future time (simulate continuous fetch)
                if end_date is None:
