@@ -14,7 +14,8 @@ class Parser:
           self.parser.add_argument(
                "name_or_file",
                type=str,
-               help="The cryptocurrency name (e.g., BTC-USDT) or a file containing a list of symbols (one per line).",
+               help="""The cryptocurrency name (e.g., BTC-USDT) or a file containing a list of symbols (one per line),
+               for file option commented pairs should start with \"//\""""
           ) 
           self.parser.add_argument(
                "start_date",
@@ -48,11 +49,10 @@ class Parser:
      def parse(self):
           """Parse the command-line arguments."""
           args = self.parser.parse_args()
-          
           symbols = []
           if Path(args.name_or_file).is_file():
                with open(args.name_or_file, "r") as f:
-                    symbols = [line.strip() for line in f.readlines() if line.strip()]
+                    symbols = [line.strip() for line in f.readlines() if line.strip() and not line.startswith("//")]
           elif "-USD" in args.name_or_file:
                symbols = [args.name_or_file]  # Treat as a single symbol
           else:
