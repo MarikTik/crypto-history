@@ -33,11 +33,10 @@ Notes:
 
 
 from datetime import datetime, timezone, timedelta
-from typing import Optional, List, AsyncGenerator, Dict
+from typing import Optional, List, AsyncGenerator, Dict, Iterable
 import asyncio
-import logging
 import aiohttp
-
+from logger import logger_manger
 
 COINBASE_CANDLES_URL = "https://api.exchange.coinbase.com/products/{}/candles"
 COINBASE_RATE_LIMIT = 1/7  # Increase up to 10 at your own risk
@@ -63,8 +62,10 @@ class CoinbaseCandleHistory:
                end_time (datetime): The ending point for fetching data.
                granularity (int): The candle interval in seconds (defaults to 60s).
 
-          Yields:
+          Returns:
                dict: {'symbol': symbol, 'data': List[List]} containing fetched OHLCV data.
+               dict: {} If no data is present for that specific timeframe
+               None: If the symbol is not found in Coinbase's database.
           """
           url = COINBASE_CANDLES_URL.format(symbol)
           chunk_size = timedelta(minutes=MAX_CANDLES)
@@ -77,27 +78,33 @@ class CoinbaseCandleHistory:
                "end": current_end.isoformat(),
                "granularity": granularity
           }
-       
-          async with session.get(url, params=params) as response:
-               if response.status == 404:
-                    logging.critical(f"❌ {symbol} not found in database.")
-                    return
+          logger = logger_manger.get_logger(symbol)
 
-               if response.status != 200:
-                    logging.error(f"⚠️ Error fetching {symbol}: ({response.status}) {await response.text()}")
-                    return
+          try:
+               async with asyncio.timeout(10):  
+                    async with session.get(url, params=params) as response:
+                         if response.status == 404:
+                              logger.critical(f"❌ {symbol} not found in database. Skipping to next coin.")
+                              return None  # Skip this coin
 
-               data = await response.json()
-               if data:
-                    logging.debug(f"📊 Downloaded {len(data)} candles for {symbol}: {current_start} → {current_end}")
-                    yield {"symbol": symbol, "data": data}
+                         if response.status != 200:
+                              logger.error(f"⚠️ fetching {symbol}: ({response.status}) {await response.text()}")
+                              return None  # Skip on API failure
 
-               else:
-                    logging.debug(f"⚠️ No data for {symbol}: {current_start} → {current_end}, skipping.")
+                         data = await response.json()
+                         if data:
+                              logger.debug(f"📊 Downloaded {len(data)} candles for {symbol}: {current_start} → {current_end}")
+                              return {"symbol": symbol, "data": data}
 
+                         logger.warning(f"⚠️ No data for {symbol}: {current_start} → {current_end}, skipping timeframe.")
+                         return {}  # No data for this timeframe, but don't skip the coin
+
+          except asyncio.TimeoutError:
+               logger.error(f"⏳ Timeout fetching data for {symbol}: {current_start} → {current_end}. Retrying later.")
+               return None  # Avoid getting stuck due to connection problems
      @staticmethod
      async def fetch(
-          symbols: List[str],
+          symbols: Iterable[str],
           start_date: str,
           end_date: Optional[str] = None,
           granularity: int = 60
@@ -109,7 +116,7 @@ class CoinbaseCandleHistory:
           coin up until today, then switches to the next.
 
           Args:
-               symbols (list): List of cryptocurrency pairs (e.g., ["BTC-USDT", "ETH-USDT"]).
+               symbols (Iterable): List of cryptocurrency pairs (e.g., ["BTC-USDT", "ETH-USDT"]).
                start_date (str): The start date in ISO format (YYYY-MM-DD)
                end_date (Optional[str]): The end date in ISO format (YYYY-MM-DD). If None, fetches indefinitely.
                granularity (int): Candle interval in seconds (defaults to 60s).
@@ -120,24 +127,42 @@ class CoinbaseCandleHistory:
           Warning: 
                `fetch(symbols, ...)` doesn't check for duplicated symbols.
           """
-    
+          
           async with aiohttp.ClientSession() as session:
                now = datetime.now(timezone.utc)
                start_date = datetime.fromisoformat(start_date).replace(tzinfo=timezone.utc)
 
-               # If no end date is provided, simulate continuous fetch by setting it to today
+               # If no end date is provided, set it to today
                if end_date is None:
                     end_date = now  
                else:
                     end_date = datetime.fromisoformat(end_date).replace(tzinfo=timezone.utc)
 
-               for symbol in symbols:  # 🔹 Process each symbol completely before moving to the next
+               for symbol in symbols:   
+                    logger = logger_manger.get_logger(symbol)
                     last_fetched = start_date
-                    
-                    while last_fetched < end_date:
-                         async for update in CoinbaseCandleHistory.fetch_timeframe(
-                              session, symbol, last_fetched, end_date, granularity
-                         ):
-                              last_fetched = datetime.fromtimestamp(update["data"][0][0], tz=timezone.utc)  # 🔹 Update to last fetched timestamp
-                              yield update  # ✅ Yields data as it arrives
-                              await asyncio.sleep(COINBASE_RATE_LIMIT)  # 🔹 Avoid rate limiting
+                    finished = False
+                    while last_fetched < end_date and not finished:
+                         result = await CoinbaseCandleHistory.fetch_timeframe(
+                              session,
+                              symbol,
+                              last_fetched,
+                              end_date,
+                              granularity
+                         )
+                         if result is None: # if symbol is not found in database
+                              break
+                         
+                         if not result.get("data"):
+                              last_fetched += timedelta(minutes=MAX_CANDLES)  # Move to next timeframe
+                              continue  # Try fetching the next timeframe
+
+                         last_fetched = datetime.fromtimestamp(result["data"][0][0], tz=timezone.utc)  # Update last fetched timestamp
+                         now = datetime.now(timezone.utc)
+                         if last_fetched.year == now.year and last_fetched.month == now.month:
+                                   logger.info(f"🔄 Reached current month for {symbol}, switching to next coin.")
+                                   finished = True
+                                   break  # Move to the next coin
+
+                         yield result  # Yields data as it arrives
+                         await asyncio.sleep(COINBASE_RATE_LIMIT)   

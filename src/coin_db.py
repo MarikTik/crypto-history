@@ -5,7 +5,7 @@ from deltalake import write_deltalake
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import AsyncGenerator, Dict, List
-import logging
+from logger import logger_manger
 
 class CoinDB:
     def __init__(self, dir: Path):
@@ -64,6 +64,7 @@ class CoinDB:
             year (str): The year of the data.
             month (str): The month of the data.
         """
+        logger = logger_manger.get_logger(symbol)
         key = (symbol, year, month)
         if key not in self.buffers or not self.buffers[key]:
             return  # Nothing to flush
@@ -86,7 +87,7 @@ class CoinDB:
 
    
         write_deltalake(delta_path, table, mode="append")
-        logging.info(f"✅ Stored {symbol} data for {year}-{month}")
+        logger.info(f"✅ Stored {symbol} data for {year}-{month}")
 
         # Clear the buffer for this month
         self.buffers[key] = []
