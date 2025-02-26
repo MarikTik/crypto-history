@@ -51,7 +51,7 @@ class CoinbaseCandleHistory:
           symbol: str,
           start_time: datetime,
           end_time: datetime,
-          granularity: int = 60) -> AsyncGenerator[Dict[str, str | List[List[float | int]]], None]:
+          granularity: int = 60) -> Dict[str, str | List[List[float | int]]]:
           """
           Fetches a specific time range of cryptocurrency candle data from Coinbase API.
 
@@ -102,6 +102,7 @@ class CoinbaseCandleHistory:
           except asyncio.TimeoutError:
                logger.error(f"⏳ Timeout fetching data for {symbol}: {current_start} → {current_end}. Retrying later.")
                return None  # Avoid getting stuck due to connection problems
+          
      @staticmethod
      async def fetch(
           symbols: Iterable[str],
