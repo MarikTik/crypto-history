@@ -1,4 +1,4 @@
-from coin_db import CoinDB
+from src.coin_db import CoinDB
 from datetime import datetime, timezone
 
 db = CoinDB("data")
