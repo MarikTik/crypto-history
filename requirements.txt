@@ -2,3 +2,6 @@ aiohttp
 asyncio
 pandas
 pyarrow
+coinbase-advanced-py
+deltalake
+duckdb
