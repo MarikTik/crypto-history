@@ -105,30 +105,17 @@ class CoinbaseCandleHistory:
           
      @staticmethod
      async def fetch(
-          symbols: Iterable[str],
-          start_date: str,
-          end_date: Optional[str] = None,
-          granularity: int = 60
+     symbols: Iterable[str],
+     start_date: str,
+     end_date: Optional[str] = None,
+     granularity: int = 60
      ) -> AsyncGenerator[Dict[str, str | List[List[float | int]]], None]:
           """
           Sequentially fetches historical and live cryptocurrency data for multiple coins.
 
           Instead of switching between coins in every iteration, it completes fetching **one** 
           coin up until today, then switches to the next.
-
-          Args:
-               symbols (Iterable): List of cryptocurrency pairs (e.g., ["BTC-USDT", "ETH-USDT"]).
-               start_date (str): The start date in ISO format (YYYY-MM-DD)
-               end_date (Optional[str]): The end date in ISO format (YYYY-MM-DD). If None, fetches indefinitely.
-               granularity (int): Candle interval in seconds (defaults to 60s).
-
-          Yields:
-            dict: {'symbol': symbol, 'data': List[List[Union[float, int]]]} containing OHLCV data.
-
-          Warning: 
-               `fetch(symbols, ...)` doesn't check for duplicated symbols.
           """
-          
           async with aiohttp.ClientSession() as session:
                now = datetime.now(timezone.utc)
                start_date = datetime.fromisoformat(start_date).replace(tzinfo=timezone.utc)
@@ -151,19 +138,30 @@ class CoinbaseCandleHistory:
                               end_date,
                               granularity
                          )
-                         if result is None: # if symbol is not found in database
-                              break
-                         
-                         if not result.get("data"):
-                              last_fetched += timedelta(minutes=MAX_CANDLES)  # Move to next timeframe
-                              continue  # Try fetching the next timeframe
 
-                         last_fetched = datetime.fromtimestamp(result["data"][0][0], tz=timezone.utc)  # Update last fetched timestamp
-                         now = datetime.now(timezone.utc)
-                         if last_fetched.year == now.year and last_fetched.month == now.month:
-                                   logger.info(f"🔄 Reached current month for {symbol}, switching to next coin.")
-                                   finished = True
-                                   break  # Move to the next coin
+                         if result is None:  # If symbol is not found in database
+                              break
+                
+                         if not result.get("data"):  # No data → Move forward
+                              last_fetched += timedelta(minutes=MAX_CANDLES)  
+                              continue  
+ 
+                         fetched_timestamps = [candle[0] for candle in result["data"]]
+                         new_last_fetched = datetime.fromtimestamp(max(fetched_timestamps), tz=timezone.utc)
+
+                         #If timestamp is stuck, force progress
+                         if new_last_fetched == last_fetched:
+                              new_last_fetched += timedelta(minutes=granularity)
+                              logger.warning(f"⚠️ Stuck on {symbol} at {last_fetched}, forcing move to {new_last_fetched}")
+
+                         last_fetched = new_last_fetched  
 
                          yield result  # Yields data as it arrives
-                         await asyncio.sleep(COINBASE_RATE_LIMIT)   
+                         await asyncio.sleep(COINBASE_RATE_LIMIT)  
+
+                         # Switch coins when reaching current month
+                         now = datetime.now(timezone.utc)
+                         if last_fetched.year == now.year and last_fetched.month == now.month:
+                              logger.info(f"🔄 Reached current month for {symbol}, switching to next coin.")
+                              finished = True
+                              break  
