@@ -1,3 +1,3 @@
-import algorithms
-import loggers
-import configs
+from .algorithms import *
+from .configs import *
+from .loggers import *

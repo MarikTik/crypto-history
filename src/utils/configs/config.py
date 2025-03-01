@@ -25,9 +25,9 @@ import os
 import json
 from pathlib import Path
 import logging
-from loggers import LoggerManager
+from ..loggers import LoggerManager
 
-_logger = LoggerManager(Path("logs", "config"), level=logging.WARNING).get_logger("config.log")
+_logger = LoggerManager(Path("logs", "config"), level=logging.WARNING).get_logger("config")
 
 class _Config:
     """
