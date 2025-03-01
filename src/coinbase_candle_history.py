@@ -148,7 +148,7 @@ class CoinbaseCandleHistory:
      @staticmethod
      async def fetch(
      symbols: Iterable[str],
-     start_date: str = "2010-01-01",
+     start_date: Optional[str] = None,
      end_date: Optional[str] = None,
      granularity: int = 60
      ) -> AsyncGenerator[Dict[str, str | List[List[float | int]]], None]:
@@ -160,6 +160,10 @@ class CoinbaseCandleHistory:
           """
           async with aiohttp.ClientSession() as session:
                now = datetime.now(timezone.utc)
+
+               if start_date is None:
+                    start_date = "2012-01-01"
+
                start_date: datetime = datetime.fromisoformat(start_date).replace(tzinfo=timezone.utc)
 
                if end_date is None or end_date > now:  # If no end date is provided, or it is set too far away set it to today
@@ -169,8 +173,8 @@ class CoinbaseCandleHistory:
 
                for symbol in symbols:   
                     logger = logger_manger.get_logger(symbol)
-                    logger.info(f"📡 Fetching historical data for {symbol} from {start_date} to {end_date} with {granularity}s granularity.")
-
+                   
+                    logger.info(f"🫣 Seeking first occurence of coinbase data for {symbol} from {start_date} to {end_date}")
                     async def condition(timestamp: int) -> bool:
                          datetime_obj = datetime.fromtimestamp(timestamp, tz=timezone.utc)
                          response = await CoinbaseCandleHistory.fetch_timeframe(session, symbol, datetime_obj)
@@ -182,8 +186,10 @@ class CoinbaseCandleHistory:
                          condition, 
                          int(start_date.timestamp()),
                          int(end_date.timestamp()),
-                         max_depth=24  # Control recursion depth
+                         max_depth=32  # Control recursion depth
                     )
+                    logger.info(f"🎉 Found first occurence of coibnase data")
+                    logger.info(f"📡 Fetching historical data for {symbol} from {start_date} to {end_date} with {granularity}s granularity.")
 
                     if first_available_timestamp == -1:
                          logger.warning(f"⚠️ No historical data found for {symbol} within the given range.")
