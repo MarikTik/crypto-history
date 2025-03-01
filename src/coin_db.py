@@ -5,7 +5,7 @@ from deltalake import write_deltalake
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import AsyncGenerator, Dict, List
-from logger import logger_manger
+from utils.loggers.logger import logger_manger
 
 class CoinDB:
     def __init__(self, dir: Path):

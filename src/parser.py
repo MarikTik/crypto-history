@@ -18,14 +18,16 @@ class Parser:
           ) 
           self.parser.add_argument(
                "start_date",
+               nargs="?",
                type=str,
+               default=None,
                help="Start date for fetching data (format: YYYY-MM-DD)",
           )
           self.parser.add_argument(
                "end_date",
                type=str,
                nargs="?",
-               default=None,  # 
+               default=None,  
                help="End date for fetching data (default: continuous polling).",
           )
           self.parser.add_argument(
