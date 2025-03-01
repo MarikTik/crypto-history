@@ -94,11 +94,11 @@ class CoinbaseCandleHistory:
           headers = {
                "User-Agent": CONFIG.USER_AGENT,
                "Accept": "application/json",
-               "X-Contact-Email": CONFIG.CONTACT_EMAIL,  # Provide your contact email
-               "X-App-Version": CONFIG.VERSION,  # Your application's version
-               "X-Repo-Link": CONFIG.REPO_LINK  # Repository for your app/tool
+               "X-Contact-Email": CONFIG.CONTACT_EMAIL,  
+               "X-App-Version": CONFIG.VERSION,  
+               "X-Repo-Link": CONFIG.REPO_LINK  
           }
-          
+
           logger = logger_manger.get_logger(symbol)
 
           try:
@@ -169,21 +169,29 @@ class CoinbaseCandleHistory:
 
                for symbol in symbols:   
                     logger = logger_manger.get_logger(symbol)
+                    logger.info(f"📡 Fetching historical data for {symbol} from {start_date} to {end_date} with {granularity}s granularity.")
+
                     async def condition(timestamp: int) -> bool:
                          datetime_obj = datetime.fromtimestamp(timestamp, tz=timezone.utc)
                          response = await CoinbaseCandleHistory.fetch_timeframe(session, symbol, datetime_obj)
-                         if not isinstance(response, dict) or "data" in response:
+                         if not isinstance(response, dict) or "data" not in response:
                               return False
                          return bool(response["data"])
 
-                    start_date = await binary_search_first_occurrence_async(
+                    first_available_timestamp = await binary_search_first_occurrence_async(
                          condition, 
                          int(start_date.timestamp()),
-                         int(end_date.timestamp())
+                         int(end_date.timestamp()),
+                         max_depth=24  # Control recursion depth
                     )
 
-                    last_fetched = start_date
+                    if first_available_timestamp == -1:
+                         logger.warning(f"⚠️ No historical data found for {symbol} within the given range.")
+                         continue
+
+                    last_fetched = datetime.fromtimestamp(first_available_timestamp, tz=timezone.utc)
                     finished = False
+
                     while last_fetched <= end_date and not finished:
                          result = await CoinbaseCandleHistory.fetch_timeframe(
                               session,
@@ -192,28 +200,32 @@ class CoinbaseCandleHistory:
                               end_date,
                               granularity
                          )
-                         #TODO implement appropriate logging HERE 
-                         if result is None:  # If symbol is not found in database
-                              break
-                
-                         if not result.get("data"):  # No data → Move forward
+
+                         if not isinstance(result, dict):  
+                              logger.error(f"🚨 Unexpected response type for {symbol}: {result}")
+                              break  
+
+                         if result in ["api_failure", "timeout_error"]:
                               last_fetched += timedelta(minutes=MAX_CANDLES)  
+                              logger.warning(f"⚠️ Fetching issue for {symbol}, skipping to {last_fetched}")
+                              await asyncio.sleep(COINBASE_RATE_LIMIT)  
                               continue  
- 
+
                          fetched_timestamps = [candle[0] for candle in result["data"]]
+                         if not fetched_timestamps:
+                              logger.warning(f"⚠️ No new data for {symbol}, skipping to next batch.")
+                              break  
+
                          new_last_fetched = datetime.fromtimestamp(max(fetched_timestamps), tz=timezone.utc)
 
-                         #If timestamp is stuck, force progress
-                         if new_last_fetched == last_fetched:
+                         if new_last_fetched == last_fetched:  
                               new_last_fetched += timedelta(minutes=granularity)
                               logger.warning(f"⚠️ Stuck on {symbol} at {last_fetched}, forcing move to {new_last_fetched}")
 
                          last_fetched = new_last_fetched  
 
-                         yield result  # Yields data as it arrives
-                   
+                         yield result  
 
-                         # Switch coins when reaching current month
                          now = datetime.now(timezone.utc)
                          if last_fetched.year == now.year and last_fetched.month == now.month:
                               logger.info(f"🔄 Reached current month for {symbol}, switching to next coin.")
