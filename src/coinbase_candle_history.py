@@ -209,23 +209,25 @@ class CoinbaseCandleHistory:
 
                          if not isinstance(result, dict):  
                               logger.error(f"🚨 Unexpected response type for {symbol}: {result}")
-                              break  
+                              last_fetched += timedelta(seconds=granularity)
+                              continue  
 
                          if result in ["api_failure", "timeout_error"]:
-                              last_fetched += timedelta(minutes=MAX_CANDLES)  
+                              last_fetched += timedelta(seconds=MAX_CANDLES)  
                               logger.warning(f"⚠️ Fetching issue for {symbol}, skipping to {last_fetched}")
                               await asyncio.sleep(COINBASE_RATE_LIMIT)  
                               continue  
 
                          fetched_timestamps = [candle[0] for candle in result["data"]]
                          if not fetched_timestamps:
+                              last_fetched += timedelta(seconds=granularity)
                               logger.warning(f"⚠️ No new data for {symbol}, skipping to next batch.")
-                              break  
+                              continue
 
                          new_last_fetched = datetime.fromtimestamp(max(fetched_timestamps), tz=timezone.utc)
 
                          if new_last_fetched == last_fetched:  
-                              new_last_fetched += timedelta(minutes=granularity)
+                              new_last_fetched += timedelta(seconds=granularity)
                               logger.warning(f"⚠️ Stuck on {symbol} at {last_fetched}, forcing move to {new_last_fetched}")
 
                          last_fetched = new_last_fetched  
