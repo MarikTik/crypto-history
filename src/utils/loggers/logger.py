@@ -11,7 +11,7 @@ class LoggerManager:
         self._loggers = {}
         self._level = level
 
-    def get_logger(self, symbol: str) -> logging.Logger:
+    def get_logger(self, path: Path | str) -> logging.Logger:
         """
         Returns a logger instance for a given symbol, creating one if it does not exist.
 
@@ -21,13 +21,17 @@ class LoggerManager:
         Returns:
             logging.Logger: A configured logger instance.
         """
-        if symbol in self._loggers:
-            return self._loggers[symbol]
+
+        if isinstance(path, str):
+            path = Path(path)
+
+        if path in self._loggers:
+            return self._loggers[path]
 
         else:
 
-            log_file = self._dir / f"{symbol}.log"
-            logger = logging.getLogger(symbol)
+            log_file = self._dir / path
+            logger = logging.getLogger(str(path))
             logger.setLevel(self._level)
 
         
@@ -37,7 +41,7 @@ class LoggerManager:
             file_handler.setFormatter(formatter)
 
             logger.addHandler(file_handler)
-            self._loggers[symbol] = logger  
+            self._loggers[str(path)] = logger  
 
         return logger
 
