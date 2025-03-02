@@ -38,7 +38,7 @@ import asyncio
 import aiohttp
 from aiohttp import ContentTypeError
 from json import JSONDecodeError
-
+from pathlib import Path
 
 from utils.loggers.logger import logger_manger
 from utils.algorithms import binary_search_first_occurrence_async
@@ -172,7 +172,7 @@ class CoinbaseCandleHistory:
                     end_date: datetime = datetime.fromisoformat(end_date).replace(tzinfo=timezone.utc)
 
                for symbol in symbols:   
-                    logger = logger_manger.get_logger(symbol)
+                    logger = logger_manger.get_logger()
                    
                     logger.info(f"🫣 Seeking first occurence of coinbase data for {symbol} from {start_date} to {end_date}")
                     async def condition(timestamp: int) -> bool:

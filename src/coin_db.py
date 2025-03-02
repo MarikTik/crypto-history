@@ -64,7 +64,7 @@ class CoinDB:
             year (str): The year of the data.
             month (str): The month of the data.
         """
-        logger = logger_manger.get_logger(symbol)
+        logger = logger_manger.get_logger(Path("logs", "coinbase", symbol))
         key = (symbol, year, month)
         if key not in self.buffers or not self.buffers[key]:
             return  # Nothing to flush
