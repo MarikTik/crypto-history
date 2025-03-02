@@ -172,7 +172,7 @@ class CoinbaseCandleHistory:
                     end_date: datetime = datetime.fromisoformat(end_date).replace(tzinfo=timezone.utc)
 
                for symbol in symbols:   
-                    logger = logger_manger.get_logger()
+                    logger = logger_manger.get_logger(Path("logs", "coinbase", f"{symbol}.log"))
                    
                     logger.info(f"🫣 Seeking first occurence of coinbase data for {symbol} from {start_date} to {end_date}")
                     async def condition(timestamp: int) -> bool:
