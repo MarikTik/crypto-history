@@ -2,5 +2,11 @@
     "version": "1.0",
     "repo_link": "https://github.com/MarikTik/crypto-history",
     "user_agent": "HistoricalDataFetcher",
-    "email" : ""
+    "email" : "",
+
+    "coinbase" : {
+        "api_observer_key" : "{COINBASE_OBSERVER_KEY}",
+        "api_observer_key_secret" : "{COINBASE_OBSERVER_PRIVATE_KEY}"
+    }
+    
 }
