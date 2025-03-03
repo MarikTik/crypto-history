@@ -19,8 +19,9 @@ class OHLCV_History(exchange.OHLCV_History):
     MAX_CANDLES = 300 # Max Candles allowed per request 
     TIMEOUT = 10 # Request timeout in seconds
   
-    def __init__(self, product: str, rate_limit: float):
-        super.__init__(product)
+    def __init__(self, product: str, granularity: int | None = 60, rate_limit: float = 1/8):
+        granularity = granularity if granularity is not None else 60 # This line is required by the base class method `fetch_many`
+        super.__init__("coinbase", product, granularity)
         self._rate_limit = rate_limit
         self._session: Optional[aiohttp.ClientSession] = None   
         self._logger = logger_manger.get_logger(Path("logs", "coinbase", "ohlcv", f"{self._product}.log"))
@@ -39,8 +40,7 @@ class OHLCV_History(exchange.OHLCV_History):
     async def fetch_timeframe(
         self,
         start_time: datetime,
-        end_time: Optional[datetime] = None,
-        granularity: int = 60) -> Dict[str, str | List[List[float | int]]] | Literal["not_found", "api_failure", "no_data", "timeout_error"]:
+        end_time: Optional[datetime] = None) -> Dict[str, str | List[List[float | int]]] | Literal["not_found", "api_failure", "no_data", "timeout_error"]:
         """
         Fetches a specific time range of cryptocurrency candle data from Coinbase API.
         Args:
@@ -73,7 +73,7 @@ class OHLCV_History(exchange.OHLCV_History):
         params = {
             "start": start_time.isoformat(),
             "end": end_time.isoformat(),
-            "granularity": granularity
+            "granularity": self._granularity
         }
         headers = {
             "User-Agent": CONFIG.USER_AGENT,
@@ -135,7 +135,6 @@ class OHLCV_History(exchange.OHLCV_History):
         self,
         start_date: Optional[Union[str, datetime]] = None,
         end_date: Optional[Union[str, datetime]] = None,
-        granularity: int = 60,
         default_start_date: str = "2012-01-01"
     ) -> AsyncGenerator[Dict[str, str | List[List[float | int]]], None]:
         """
@@ -172,7 +171,7 @@ class OHLCV_History(exchange.OHLCV_History):
             max_depth=32  # Control recursion depth
         )
         logger.info(f"🎉 Found first occurence of coibnase data")
-        logger.info(f"📡 Fetching historical data for {self._product} from {start_date} to {end_date} with {granularity}s granularity.")
+        logger.info(f"📡 Fetching historical data for {self._product} from {start_date} to {end_date} with {self._granularity}s granularity.")
 
         if first_available_timestamp == -1:
             logger.error(f"⚠️ No historical data found for {self._product} within the given range.")
@@ -182,11 +181,11 @@ class OHLCV_History(exchange.OHLCV_History):
         finished = False
 
         while last_fetched <= end_date and not finished:
-            result = await self.fetch_timeframe(last_fetched, end_date, granularity)
+            result = await self.fetch_timeframe(last_fetched, end_date, self._granularity)
 
             if not isinstance(result, dict):  
                 logger.error(f"🚨 Unexpected response type for {self._product}: {result}")
-                last_fetched += timedelta(seconds=granularity)
+                last_fetched += timedelta(seconds=self._granularity)
                 continue  
 
             if result in ["api_failure", "timeout_error"]:
@@ -197,14 +196,14 @@ class OHLCV_History(exchange.OHLCV_History):
 
             fetched_timestamps = [candle[0] for candle in result["data"]]
             if not fetched_timestamps:
-                last_fetched += timedelta(seconds=granularity)
+                last_fetched += timedelta(seconds=self._granularity)
                 logger.warning(f"⚠️ No new data for {self._product}, skipping to next batch.")
                 continue
 
             new_last_fetched = datetime.fromtimestamp(max(fetched_timestamps), tz=timezone.utc)
 
             if new_last_fetched == last_fetched:  
-                new_last_fetched += timedelta(seconds=granularity)
+                new_last_fetched += timedelta(seconds=self._granularity)
                 logger.warning(f"⚠️ Stuck on {self._product} at {last_fetched}, forcing move to {new_last_fetched}")
 
             last_fetched = new_last_fetched  
@@ -213,7 +212,7 @@ class OHLCV_History(exchange.OHLCV_History):
 
             now = datetime.now(timezone.utc)
             if last_fetched.year == now.year and last_fetched.month == now.month:
-                logger.info(f"🔄 Reached current month for {self._product}, switching to next coin.")
+                logger.info(f"🔄 Reached current month for {self._product}")
                 finished = True
                 break  
 
