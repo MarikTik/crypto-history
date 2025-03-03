@@ -25,7 +25,7 @@ class OrderBook(ABC):
         """Async context manager exit: Closes WebSocket client."""
 
     @abstractmethod
-    async def snapshots(self, untill: Optional[Union[str, datetime]]) -> AsyncGenerator[Dict, None]:
+    async def snapshots(self, until: Optional[Union[str, datetime]]) -> AsyncGenerator[Dict, None]:
         """
         Abstract generator for yielding order book snapshots.
 
