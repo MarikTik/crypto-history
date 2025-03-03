@@ -5,8 +5,8 @@
     "email" : "",
 
     "coinbase" : {
-        "api_observer_key" : "{COINBASE_OBSERVER_KEY}",
-        "api_observer_key_secret" : "{COINBASE_OBSERVER_PRIVATE_KEY}"
+        "api_key" : "{COINBASE_OBSERVER_KEY}",
+        "api_key_secret" : "{COINBASE_OBSERVER_PRIVATE_KEY}"
     }
     
 }
