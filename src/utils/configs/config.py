@@ -27,7 +27,7 @@ from pathlib import Path
 import logging
 from ..loggers import LoggerManager
 
-_logger = LoggerManager(Path("logs", "config"), level=logging.WARNING).get_logger("config")
+_logger = LoggerManager(Path("logs", "config"), level=logging.WARNING).get_logger("config.log")
 
 class _Config:
     """
@@ -105,6 +105,20 @@ class _Config:
     def CONTACT_EMAIL(self):
         """Returns the contact email from `config.json`, or falls back to the `EMAIL` environment variable."""
         return self._get("email", os.getenv("EMAIL", ""))
+    
+
+    @property
+    def API_KEYS(self):
+        exchange_to_keysets = {exchange_name : self._get(exchange_name, {}) for exchange_name in ("coinbase", "kraken", "binance", "robinhood")}
+        for exchange, key_set in exchange_to_keysets.items():
+            for key, value in key_set.items():
+                if value.startswith("{") and value.endswith("}"):
+                    environment_v = value[1:-1]
+                    key_set[key] = os.getenv(environment_v, "")
+                    if key_set[key] == "":
+                        _logger.critical(f"❌ Unable to find suitable conversion for `{environment_v}` via environment variable in `{exchange.capitalize()}` API keys.")
+                
+        return exchange_to_keysets
 
 # Create a singleton instance of the configuration
 CONFIG = _Config()
