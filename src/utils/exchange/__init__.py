@@ -1,3 +1,3 @@
-from database import *
-from ohlcv_history import *
-from order_book import *
+from .database import DataBase
+from .ohlcv_history import OHLCV_HISTRY
+from .order_book import OrderBook
