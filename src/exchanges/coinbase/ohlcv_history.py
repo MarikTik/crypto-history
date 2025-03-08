@@ -175,7 +175,7 @@ class OHLCV_History(exchange.OHLCV_History):
 
         if first_available_timestamp == -1:
             logger.error(f"⚠️ No historical data found for {self._product} within the given range.")
-            return {}
+            return
                   
         last_fetched = datetime.fromtimestamp(first_available_timestamp, tz=timezone.utc)
         finished = False
