@@ -27,7 +27,7 @@ from pathlib import Path
 import logging
 from ..loggers import LoggerManager
 
-_logger = LoggerManager(Path("logs", "config"), level=logging.WARNING).get_logger("config.log")
+_logger = LoggerManager(Path("logs", "config"), logging.WARNING).get_logger("config.log")
 
 class _Config:
     """
