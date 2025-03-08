@@ -24,7 +24,7 @@ class OHLCV_History(exchange.OHLCV_History):
         super().__init__("coinbase", product, granularity)
         self._rate_limit = rate_limit
         self._session: Optional[aiohttp.ClientSession] = None   
-        self._logger = logger_manager.get_logger(Path("logs", "coinbase", "ohlcv", f"{self._product}.log"))
+        self._logger = logger_manager.get_logger(Path("coinbase", "ohlcv", f"{self._product}.log"))
 
     async def __aenter__(self):
         """Async context manager entry: Create session."""
@@ -182,7 +182,6 @@ class OHLCV_History(exchange.OHLCV_History):
 
         while last_fetched <= end_date and not finished:
             result = await self.fetch_timeframe(last_fetched, end_date)
-            print("result = ", result)
             if not isinstance(result, dict):  
                 logger.error(f"🚨 Unexpected response type for {self._product}: {result}")
                 last_fetched += timedelta(seconds=self._granularity)
@@ -207,8 +206,6 @@ class OHLCV_History(exchange.OHLCV_History):
                 logger.warning(f"⚠️ Stuck on {self._product} at {last_fetched}, forcing move to {new_last_fetched}")
 
             last_fetched = new_last_fetched  
-
-            # ✅ Extract `product` and `data` from `result`, avoiding duplication
 
             yield result
 
