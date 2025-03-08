@@ -1,4 +1,3 @@
-import utils.exchange as exchange
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, AsyncGenerator, Dict, Literal, Union
 import asyncio
@@ -7,7 +6,8 @@ from aiohttp import ContentTypeError
 from json import JSONDecodeError
 from pathlib import Path
 
-from utils.loggers.logger import logger_manger
+from utils.loggers.logger import logger_manager
+import utils.exchange as exchange
 from utils.algorithms import binary_search_first_occurrence_async
 from utils.configs import CONFIG
 
@@ -21,10 +21,10 @@ class OHLCV_History(exchange.OHLCV_History):
   
     def __init__(self, product: str, granularity: int | None = 60, rate_limit: float = 1/8):
         granularity = granularity if granularity is not None else 60 # This line is required by the base class method `fetch_many`
-        super.__init__("coinbase", product, granularity)
+        super().__init__("coinbase", product, granularity)
         self._rate_limit = rate_limit
         self._session: Optional[aiohttp.ClientSession] = None   
-        self._logger = logger_manger.get_logger(Path("logs", "coinbase", "ohlcv", f"{self._product}.log"))
+        self._logger = logger_manager.get_logger(Path("logs", "coinbase", "ohlcv", f"{self._product}.log"))
 
     async def __aenter__(self):
         """Async context manager entry: Create session."""
@@ -50,7 +50,7 @@ class OHLCV_History(exchange.OHLCV_History):
             granularity (int): The candle interval in seconds (defaults to 60s).
  
         Returns:
-            dict: {'self._product': self._product, 'data': List[List]} containing fetched OHLCV data.
+            dict: {'product': product, 'data': List[List]} containing fetched OHLCV data.
             str: `"not_found"` if the coin pair wasn't found in database (404 error).
                  `"api_failure"` if the response status was not 200 or returned invalid JSON.
                  `"no_data"` if the response was successful but no candle data present in it.
@@ -115,7 +115,7 @@ class OHLCV_History(exchange.OHLCV_History):
 
                 if data:
                     logger.debug(f"📊 Downloaded {len(data)} candles for {self._product}: {start_time} → {end_time}")
-                    return {"self._product": self._product, "data": data}
+                    return {"product": self._product, "data": data}
 
               
                 logger.warning(f"⚠️ No data for {self._product}: {start_time} → {end_time}")
@@ -136,7 +136,7 @@ class OHLCV_History(exchange.OHLCV_History):
         start_date: Optional[Union[str, datetime]] = None,
         end_date: Optional[Union[str, datetime]] = None,
         default_start_date: str = "2012-01-01"
-    ) -> AsyncGenerator[Dict[str, str | List[List[float | int]]], None]:
+    ) -> AsyncGenerator[Dict[str, Union[str, List[List[float | int]]]], None]:
         """
         Sequentially fetches historical and live cryptocurrency data.
         """        
@@ -147,15 +147,14 @@ class OHLCV_History(exchange.OHLCV_History):
             start_date = default_start_date
 
         if isinstance(start_date, str):
-            start_date: datetime = datetime.fromisoformat(start_date).replace(tzinfo=timezone.utc)
- 
-        if end_date is None or end_date > now:  # If no end date is provided, or it is set too far away set it to today
+            start_date = datetime.fromisoformat(start_date).replace(tzinfo=timezone.utc)
+
+        if end_date is None or end_date > now:
             end_date = now  
-
         elif isinstance(end_date, str):
-            end_date: datetime = datetime.fromisoformat(end_date).replace(tzinfo=timezone.utc)
+            end_date = datetime.fromisoformat(end_date).replace(tzinfo=timezone.utc)
 
-        logger.info(f"🫣 Seeking first occurence of coinbase data for {self._product} from {start_date} to {end_date}")
+        logger.info(f"🫣 Seeking first occurrence of Coinbase data for {self._product} from {start_date} to {end_date}")
 
         async def condition(timestamp: int) -> bool:
             datetime_obj = datetime.fromtimestamp(timestamp, tz=timezone.utc)
@@ -168,21 +167,22 @@ class OHLCV_History(exchange.OHLCV_History):
             condition, 
             int(start_date.timestamp()),
             int(end_date.timestamp()),
-            max_depth=32  # Control recursion depth
+            max_depth=32
         )
-        logger.info(f"🎉 Found first occurence of coibnase data")
+
+        logger.info(f"🎉 Found first occurrence of Coinbase data")
         logger.info(f"📡 Fetching historical data for {self._product} from {start_date} to {end_date} with {self._granularity}s granularity.")
 
         if first_available_timestamp == -1:
             logger.error(f"⚠️ No historical data found for {self._product} within the given range.")
             return
-                  
+
         last_fetched = datetime.fromtimestamp(first_available_timestamp, tz=timezone.utc)
         finished = False
 
         while last_fetched <= end_date and not finished:
-            result = await self.fetch_timeframe(last_fetched, end_date, self._granularity)
-
+            result = await self.fetch_timeframe(last_fetched, end_date)
+            print("result = ", result)
             if not isinstance(result, dict):  
                 logger.error(f"🚨 Unexpected response type for {self._product}: {result}")
                 last_fetched += timedelta(seconds=self._granularity)
@@ -208,7 +208,9 @@ class OHLCV_History(exchange.OHLCV_History):
 
             last_fetched = new_last_fetched  
 
-            yield result  
+            # ✅ Extract `product` and `data` from `result`, avoiding duplication
+
+            yield result
 
             now = datetime.now(timezone.utc)
             if last_fetched.year == now.year and last_fetched.month == now.month:
@@ -217,4 +219,3 @@ class OHLCV_History(exchange.OHLCV_History):
                 break  
 
             await asyncio.sleep(self._rate_limit)  
-          
