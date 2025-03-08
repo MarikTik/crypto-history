@@ -1,4 +1,4 @@
 import utils.exchange as exchange
 
-class DataBase(exchange.DataBase):
+class DataBase(exchange.Database):
     pass
