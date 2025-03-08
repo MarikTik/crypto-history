@@ -23,8 +23,7 @@ class OHLCV_History(ABC, Generic[T]):
     async def fetch_timeframe(
         self,
         start_time: datetime,
-        end_time: Optional[datetime],
-        granularity: int) -> AsyncGenerator[Any, None]:
+        end_time: Optional[datetime]) -> AsyncGenerator[Any, None]:
         pass
     
     @abstractmethod
@@ -32,7 +31,6 @@ class OHLCV_History(ABC, Generic[T]):
         self,
         start_date: Optional[Union[str, datetime]],
         end_date: Optional[Union[str, datetime]],
-        granularity: int,
         default_start_date: str) -> AsyncGenerator[Any, None]:
         pass
 
@@ -60,6 +58,6 @@ class OHLCV_History(ABC, Generic[T]):
         for product, params in products.items():
             start_date, end_date, granularity = [params.get(key, None) for key in ["start_date", "end_date", "granularity"]]
             async with cls(product, granularity) as instance:   
-                async for data in instance.fetch(start_date, end_date, granularity):
-                    yield {product : data}   
+                async for dictionary in instance.fetch(start_date, end_date):
+                    yield dictionary
        
