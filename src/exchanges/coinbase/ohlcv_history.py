@@ -170,12 +170,12 @@ class OHLCV_History(exchange.OHLCV_History):
             max_depth=32
         )
 
-        logger.info(f"🎉 Found first occurrence of Coinbase data")
-        logger.info(f"📡 Fetching historical data for {self._product} from {start_date} to {end_date} with {self._granularity}s granularity.")
-
         if first_available_timestamp == -1:
             logger.error(f"⚠️ No historical data found for {self._product} within the given range.")
             return
+
+        logger.info(f"🎉 Found first occurrence of Coinbase data")
+        logger.info(f"📡 Fetching historical data for {self._product} from {start_date} to {end_date} with {self._granularity}s granularity.")
 
         last_fetched = datetime.fromtimestamp(first_available_timestamp, tz=timezone.utc)
         finished = False
