@@ -70,23 +70,25 @@ Default values will be applied:
 
 
 ### **📂File-Based Order Book Mode** ###
-Load order book configuration from a JSON file:
+Load order book configuration from a text file:
 ```sh
 python src/main.py order_book kraken file path/to/order_book_config.json --dir custom_order_book_storage/
 ```
-     📂File Format (order_book_config.json)
-     ```json
-     {
-     "BTC-USD": {
-          "depth": 50,
-          "frequency": 5,
-          "end_date": "2024-01-01"
-     },
-     "ETH-USD": {
-          "depth": 25
-     }
+     📂File Format (order_book_config.txt)
+     ```txt
+      
+     "BTC-USD",
+     "ETH-USD",
+     "SOL-USD"
      ```
 }
+
+As oppossed to ohlcv download, order_book doesn't support per-product configurations. In other words
+```sh
+python src/main.py order_book kraken file path/to/order_book_config.json --depth 10 --frequency 5 --dir custom_order_book_storage/
+```
+will download the order books with depth 10 and frequency 5 indefinitely for all products
+
 Any missing parameter will use default values:
      - **depth** : 25 levels
      - **frequency** : 5 seconds
@@ -97,7 +99,7 @@ Any missing parameter will use default values:
 import argparse
 from pathlib import Path
 from datetime import timezone, datetime
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 import json
 
 import exchanges.coinbase as coinbase
@@ -182,9 +184,9 @@ class Parser:
 
           ohlcv_manual_parser = ohlcv_subparsers.add_parser("manual", help="Manually specify coin and parameters.")
           ohlcv_manual_parser.add_argument("product", type=str, help="Product name (e.g., BTC, ETH, SOL). Naming MUST be appropriate for the chosen exchange")
-          ohlcv_manual_parser.add_argument("start_date", type=str, nargs="?", default=DEFAULT_START_DATE, help="Start date (format: YYYY-MM-DD).")
-          ohlcv_manual_parser.add_argument("end_date", type=str, nargs="?", default=str(datetime.now(timezone.utc).date()), help="End date.")
-          ohlcv_manual_parser.add_argument("granularity", type=int, nargs="?", default=DEFAULT_GRANULARITY, choices=[60, 300, 900, 3600, 21600, 86400], help="Granularity in seconds (default: 60s).")
+          ohlcv_manual_parser.add_argument("--start_date", type=str, nargs="?", default=DEFAULT_START_DATE, help="Start date (format: YYYY-MM-DD).")
+          ohlcv_manual_parser.add_argument("--end_date", type=str, nargs="?", default=str(datetime.now(timezone.utc).date()), help="End date.")
+          ohlcv_manual_parser.add_argument("--granularity", type=int, nargs="?", default=DEFAULT_GRANULARITY, choices=[60, 300, 900, 3600, 21600, 86400], help="Granularity in seconds (default: 60s).")
           ohlcv_manual_parser.add_argument("--dir", type=str, default=None, help="Database directory. Defaults to data/exchange_name/ohlcv/")
         
 
@@ -198,16 +200,19 @@ class Parser:
  
           order_book_file_parser = order_book_subparsers.add_parser("file", help="Use a JSON file to specify coins and parameters.")
           order_book_file_parser.add_argument("file_path", type=str, help="Path to the JSON file.")
+          order_book_file_parser.add_argument("--depth", type=int, nargs="?", default=50, help="Number of order book levels (default: 50).")
+          order_book_file_parser.add_argument("--frequency", type=int, nargs="?", default=5, help="Snapshot interval in seconds (default: 5s).")
+          order_book_file_parser.add_argument("--end_date", type=str, nargs="?", default=None, help="End date (default: never stop).")
           order_book_file_parser.add_argument("--dir", type=str, default=None, help="Database directory. Defaults to data/exchange_name/order_book/")
 
           order_book_manual_parser = order_book_subparsers.add_parser("manual", help="Manually specify coin and parameters.")
           order_book_manual_parser.add_argument("product", type=str, help="Product name (e.g., BTC, ETH, SOL). Naming MUST be appropriate for the chosen exchange")
-          order_book_manual_parser.add_argument("depth", type=int, nargs="?", default=50, help="Number of order book levels (default: 50).")
-          order_book_manual_parser.add_argument("frequency", type=int, nargs="?", default=5, help="Snapshot interval in seconds (default: 5s).")
-          order_book_manual_parser.add_argument("end_date", type=str, nargs="?", default=None, help="End date (default: never stop).")
+          order_book_manual_parser.add_argument("--depth", type=int, nargs="?", default=50, help="Number of order book levels (default: 50).")
+          order_book_manual_parser.add_argument("--frequency", type=int, nargs="?", default=5, help="Snapshot interval in seconds (default: 5s).")
+          order_book_manual_parser.add_argument("--end_date", type=str, nargs="?", default=None, help="End date (default: never stop).")
           order_book_manual_parser.add_argument("--dir", type=str, default=None, help="Database directory. Defaults to data/exchange_name/order_book/")
 
-     def parse(self) ->  Tuple[str, str, Dict[str, Dict[str, str | int | None]], Path]:
+     def parse(self) ->  Tuple[str, str, Dict[str, Dict[str, str | int | None]], Path, Optional[Tuple[int, float, str]]]:
           """
           Parses command-line arguments and structures them into a structured format.
 
@@ -215,7 +220,8 @@ class Parser:
                tuple:
                - `download_type` (str): Either "ohlcv" or "order_book".
                - `exchange` (str): Target exchange (e.g., "coinbase", "binance").
-               - `parsed_data` (dict): Contains configuration details for each product.
+               - `parsed_data` (dict): Contains configuration details for each product in OHCLV and key-only dictionary for Order Book.
+                    
                     Example for **OHLCV**:
                     ```
                     {
@@ -229,17 +235,19 @@ class Parser:
                     Example for **Order Book**:
                     ```
                     {
-                         "BTC-USD": {
-                              "depth": 50,
-                              "frequency": 5,
-                              "end_date": None
-                         }
+                         "BTC-USD" : {},
+                         "ETH-USD" : {},
+                         "SOL-USDC : {}"
                     }
+     
                     ```
+               - `extras` (Optional[int, float, str]): Tuple containing `depth`, `frequency` and `end_date` if `order_book` download_type is chosen, else None. 
                - `dir` (Path): The database storage directory.
+              
           """
 
           args = self.parser.parse_args()
+          extras = None
           parsed_data = {}
           
           if args.dir is None:    
@@ -262,12 +270,9 @@ class Parser:
                          }
 
                     elif args.download_type == "order_book":
-                         parsed_data[product] = {
-                              "depth": entry.get("depth", DEFAULT_DEPTH),
-                              "frequency": entry.get("frequency", DEFAULT_FREQUENCY),
-                              "end_date": entry.get("end_date", None),  # for continuous download
-                         }
-            
+                         parsed_data[product] = {}
+                         extras = args.depth, args.frequency, args.end_date
+               
 
           elif args.input_mode == "manual":  
                if args.download_type == "ohlcv":
@@ -278,15 +283,12 @@ class Parser:
                     }
 
                elif args.download_type == "order_book":
-                    parsed_data[args.product] = {
-                         "depth": args.depth,
-                         "frequency": args.frequency,
-                         "end_date": args.end_date,  # Can be None for continuous tracking
-                    }
+                    parsed_data[args.product] = {}
+                    extras = args.depth, args.frequency, args.end_date
           else:
                raise RuntimeError(f"{args.input_mode} is not an available option for input mode. Use either 'file' or 'manual'.")
           
-          return args.download_type, args.exchange, parsed_data, args.dir
+          return args.download_type, args.exchange, parsed_data, extras, args.dir
 
 
      def _is_implemented(self, cls) -> bool:
