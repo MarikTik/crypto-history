@@ -1,20 +1,21 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Union, Optional, Dict, TypeVar, Generic, Any, Type, AsyncGenerator
+from typing import Union, Optional, Dict, TypeVar, Generic, Any, Type, AsyncGenerator, List
 
  
 T = TypeVar("T", bound="OHLCV_History")
-
 class OHLCV_History(ABC, Generic[T]):
     def __init__(self, exchange: str, product: str, granularity: int):
         self._exchange = exchange
         self._product = product
         self._granularity = granularity
 
+    @abstractmethod
     async def __aenter__(self):
         """Async context manager entry: Create session."""
         return self
-
+    
+    @abstractmethod
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit: Close session properly."""
         pass
@@ -23,7 +24,7 @@ class OHLCV_History(ABC, Generic[T]):
     async def fetch_timeframe(
         self,
         start_time: datetime,
-        end_time: Optional[datetime]) -> AsyncGenerator[Any, None]:
+        end_time: Optional[datetime]) -> AsyncGenerator[List[int | float], None]:
         pass
     
     @abstractmethod
@@ -31,11 +32,11 @@ class OHLCV_History(ABC, Generic[T]):
         self,
         start_date: Optional[Union[str, datetime]],
         end_date: Optional[Union[str, datetime]],
-        default_start_date: str) -> AsyncGenerator[Any, None]:
+        default_start_date: str) -> AsyncGenerator[List[int | float], None]:
         pass
 
     @staticmethod
-    async def fetch_many(cls: Type[T], products: Dict[str, Dict]) -> AsyncGenerator[Any, None]:
+    async def fetch_many(cls: Type[T], products: Dict[str, Dict]) -> AsyncGenerator[Dict[str, List[int | float]], None]:
         """
         Fetches OHLCV data for multiple products asynchronously.
         This method allows selecting which subclass of OHLCV_History should be used.
@@ -58,6 +59,6 @@ class OHLCV_History(ABC, Generic[T]):
         for product, params in products.items():
             start_date, end_date, granularity = [params.get(key, None) for key in ["start_date", "end_date", "granularity"]]
             async with cls(product, granularity) as instance:   
-                async for dictionary in instance.fetch(start_date, end_date):
-                    yield dictionary
+                async for ohlcv_list in instance.fetch(start_date, end_date):
+                    yield {"product" : product, "data" : ohlcv_list}
        
