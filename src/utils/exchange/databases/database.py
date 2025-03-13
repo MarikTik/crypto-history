@@ -1,3 +1,30 @@
+"""
+Abstract Base Class for OHLCV and Order Book Databases.
+
+This module defines `Database`, an abstract base class (ABC) that serves as a foundation 
+for implementing structured storage of financial market data, specifically:
+- **OHLCV Data**: Open-High-Low-Close-Volume historical data.
+- **Order Book Data**: Real-time order book snapshots.
+
+### Key Functionalities:
+- `insert()`: Inserts OHLCV or order book data into the database.
+- `query()`: Retrieves stored data for a specified timeframe.
+
+### Intended Usage:
+This class should be subclassed to implement concrete database solutions (e.g., Delta Lake, 
+DuckDB, SQLite). It provides a common interface for inserting and retrieving financial data 
+efficiently.
+
+#### Example Subclass Implementation:
+```python
+class OHLCVDatabase(Database):
+    def insert(self, records: Dict[str, Any]) -> None:
+        pass  # Custom implementation
+
+    def query(self, symbol: str, from_timestamp: int, to_timestamp: int) -> Any:
+        pass  # Custom implementation
+
+"""
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -6,7 +33,33 @@ from datetime import datetime
 
 
 class Database(ABC):
+    """
+    Abstract Base Class for Financial Data Storage.
+
+    This class provides a structured framework for storing and retrieving OHLCV 
+    (Open-High-Low-Close-Volume) or Order Book data. It is designed to be subclassed, 
+    allowing for specific database implementations.
+
+    Attributes:
+        _directory (Path): The root directory where data is stored.
+
+    Methods:
+        insert(records: Dict[str, Any]) -> None:
+            Abstract method for inserting data into the database.
+        
+        query(symbol: str, from_timestamp: Optional[int | float | str | datetime], 
+              to_timestamp: Optional[int | float | str | datetime] = None) -> Any:
+            Abstract method for querying stored data within a given time range.
+    """
+
     def __init__(self, directory: Path):
+        """
+        Initializes the database with a specified storage directory.
+
+        Args:
+            directory (Path): The root directory for storing OHLCV or order book data.
+                              If the directory does not exist, it will be created.
+        """
         directory.mkdir(parents=True, exist_ok=True)
         self._directory = directory
 
@@ -33,33 +86,3 @@ class Database(ABC):
             Any: The queried data.
         """
         pass
-
-    def to_unix_timestamp(ts: int | float | str | datetime, to_int: bool = True) -> int | float:
-        """Converts a given timestamp into a uniform UNIX timestamp.
-
-        Args:
-            ts (int | float | str | datetime): Input timestamp in various formats:
-                - `int` → Assumes epoch seconds.
-                - `float` → Assumes epoch seconds with milliseconds.
-                - `str` → Converts from ISO 8601 format (`YYYY-MM-DD HH:MM:SS` or `YYYY-MM-DD`).
-                - `datetime` → Converts to UNIX timestamp.
-            to_int (bool): If True, rounds to an integer (seconds precision). If False, keeps float (millisecond precision).
-
-        Returns:
-            int | float: A standardized UNIX timestamp.
-        """
-    
-        if isinstance(ts, (int, float)):
-            return int(ts) if to_int else float(ts)  # Ensure correct type
-
-        if isinstance(ts, str):
-            try:
-                dt = datetime.fromisoformat(ts)
-            except ValueError:
-                raise ValueError(f"Invalid timestamp format: {ts}. Expected ISO 8601 format.")
-            return int(dt.timestamp()) if to_int else dt.timestamp()
-
-        if isinstance(ts, datetime):
-            return int(ts.timestamp()) if to_int else ts.timestamp()
-
-        raise TypeError(f"Unsupported timestamp type: {type(ts)}")
