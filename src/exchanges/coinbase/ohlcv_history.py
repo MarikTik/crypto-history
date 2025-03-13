@@ -158,7 +158,7 @@ class OHLCV_History(exchange.OHLCV_History):
         async def condition(timestamp: int) -> bool:
             datetime_obj = datetime.fromtimestamp(timestamp, tz=timezone.utc)
             response = await self.fetch_timeframe(datetime_obj)
-            if not isinstance(response, list) or len(response) != 6:
+            if not isinstance(response, list):
                 return False
            
             return True
@@ -179,8 +179,9 @@ class OHLCV_History(exchange.OHLCV_History):
 
         last_fetched = datetime.fromtimestamp(first_available_timestamp, tz=timezone.utc)
         finished = False
-
+        
         while last_fetched <= end_date and not finished:
+          
             result = await self.fetch_timeframe(last_fetched, end_date)
             if not isinstance(result, list):  
                 logger.error(f"🚨 Unexpected response type for {self._product}: {result}")
@@ -192,15 +193,15 @@ class OHLCV_History(exchange.OHLCV_History):
                 logger.warning(f"⚠️ Fetching issue for {self._product}, skipping to {last_fetched}")
                 await asyncio.sleep(self._rate_limit)  
                 continue  
-
-            fetched_timestamps = [candle[0] for candle in result["data"]]
+            
+            fetched_timestamps = [candle[0] for candle in result]
             if not fetched_timestamps:
                 last_fetched += timedelta(seconds=self._granularity)
                 logger.warning(f"⚠️ No new data for {self._product}, skipping to next batch.")
                 continue
 
             new_last_fetched = datetime.fromtimestamp(max(fetched_timestamps), tz=timezone.utc)
-
+           
             if new_last_fetched == last_fetched:  
                 new_last_fetched += timedelta(seconds=self._granularity)
                 logger.warning(f"⚠️ Stuck on {self._product} at {last_fetched}, forcing move to {new_last_fetched}")
