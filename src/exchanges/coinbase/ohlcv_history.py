@@ -40,17 +40,16 @@ class OHLCV_History(exchange.OHLCV_History):
     async def fetch_timeframe(
         self,
         start_time: datetime,
-        end_time: Optional[datetime] = None) -> Dict[str, str | List[List[float | int]]] | Literal["not_found", "api_failure", "no_data", "timeout_error"]:
+        end_time: Optional[datetime] = None) -> List[int | float] | Literal["not_found", "api_failure", "no_data", "timeout_error"]:
         """
         Fetches a specific time range of cryptocurrency candle data from Coinbase API.
         Args:
  
             start_time (datetime): The starting point for fetching data.
             end_time (datetime or None): The ending point for fetching data. Assigned start_time + MAX_CANDLES (minutes) if None provided.
-            granularity (int): The candle interval in seconds (defaults to 60s).
  
         Returns:
-            dict: {'product': product, 'data': List[List]} containing fetched OHLCV data.
+            List[int | float]: list containing fetched OHLCV data (timestamp: int, open, low, high, close, volume).
             str: `"not_found"` if the coin pair wasn't found in database (404 error).
                  `"api_failure"` if the response status was not 200 or returned invalid JSON.
                  `"no_data"` if the response was successful but no candle data present in it.
@@ -115,7 +114,7 @@ class OHLCV_History(exchange.OHLCV_History):
 
                 if data:
                     logger.debug(f"📊 Downloaded {len(data)} candles for {self._product}: {start_time} → {end_time}")
-                    return {"product": self._product, "data": data}
+                    return data
 
               
                 logger.warning(f"⚠️ No data for {self._product}: {start_time} → {end_time}")
@@ -136,7 +135,7 @@ class OHLCV_History(exchange.OHLCV_History):
         start_date: Optional[Union[str, datetime]] = None,
         end_date: Optional[Union[str, datetime]] = None,
         default_start_date: str = "2012-01-01"
-    ) -> AsyncGenerator[Dict[str, Union[str, List[List[float | int]]]], None]:
+    ) -> AsyncGenerator[List[int | float], None]:
         """
         Sequentially fetches historical and live cryptocurrency data.
         """        
@@ -159,9 +158,10 @@ class OHLCV_History(exchange.OHLCV_History):
         async def condition(timestamp: int) -> bool:
             datetime_obj = datetime.fromtimestamp(timestamp, tz=timezone.utc)
             response = await self.fetch_timeframe(datetime_obj)
-            if not isinstance(response, dict) or "data" not in response:
+            if not isinstance(response, list) or len(response) != 6:
                 return False
-            return bool(response["data"])
+           
+            return True
 
         first_available_timestamp = await binary_search_first_occurrence_async(
             condition, 
@@ -182,7 +182,7 @@ class OHLCV_History(exchange.OHLCV_History):
 
         while last_fetched <= end_date and not finished:
             result = await self.fetch_timeframe(last_fetched, end_date)
-            if not isinstance(result, dict):  
+            if not isinstance(result, list):  
                 logger.error(f"🚨 Unexpected response type for {self._product}: {result}")
                 last_fetched += timedelta(seconds=self._granularity)
                 continue  
