@@ -64,21 +64,21 @@ class Database(ABC):
         self._directory = directory
 
     @abstractmethod
-    def insert(self, records: Dict[str, Any]) -> None:
+    def insert(self, product_records: Dict[str, Any]) -> None:
         """Inserts OHLCV or order book data into the database.
 
         Args:
-            records (Dict[str, Any]): Dictionary where keys are symbols (e.g., "BTC-USD")
+            product_records (Dict[str, Any]): Dictionary where keys are symbols (e.g., "BTC-USD")
                                       and values are corresponding OHLCV or order book data.
         """
         pass
 
     @abstractmethod
-    def query(self, symbol: str, from_timestamp: Optional[str | datetime | int], to_timestamp: Optional[str | datetime | int] = None):
+    def query(self, product: str, from_timestamp: Optional[str | datetime | int], to_timestamp: Optional[str | datetime | int] = None):
         """Queries OHLCV or order book data for a specific cryptocurrency.
 
         Args:
-            symbol (str): The trading pair (e.g., "BTC-USD").
+            product (str): The trading pair (e.g., "BTC-USD").
             start_time (str | datetime): The starting datetime for data retrieval.
             end_time (str | datetime, optional): The ending datetime (defaults to now if not provided).
         
