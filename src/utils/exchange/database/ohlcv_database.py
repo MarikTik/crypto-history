@@ -19,6 +19,11 @@ Assumptions & Restrictions:
 - Sorting is performed by timestamp. If the data is already sorted, the performance cost 
   of sorting in Pandas may still be non-negligible, but is typically reduced.
 
+Changed/Additional Notes:
+- A `close()` method has been added to handle final cleanup when the `OHLCV_Database` 
+  instance goes out of scope. This method merges any unmerged CSV data into Parquet 
+  (if `_last_used_path` is set) and then deletes the temporary directory.
+
 """
 
 from pathlib import Path
@@ -27,6 +32,7 @@ from .write_only_database import WriteOnlyDatabase
 
 import csv
 import pandas as pd
+import shutil
 
 class OHLCV_Database(WriteOnlyDatabase):
     """Handles writing OHLCV data to temporary CSV files and merging them into Parquet.
@@ -54,7 +60,7 @@ class OHLCV_Database(WriteOnlyDatabase):
         self._tempdir.mkdir(parents=True, exist_ok=True)
         self._last_used_path: Optional[Path] = None
         
-    def insert(self, product_records: Dict[str, str | List[List[float | int]]]) -> None:
+    def write(self, product_records: Dict[str, str | List[List[float | int]]]) -> None:
         """Appends new OHLCV data to a temporary CSV, possibly compresses it.
 
         This method:
@@ -134,4 +140,28 @@ class OHLCV_Database(WriteOnlyDatabase):
         with csv_path.open("w"): # Clear the CSV
             pass
         
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        
+    def close(self) -> None:
+        """
+        Merges any remaining CSV data into Parquet and deletes the temporary directory.
+
+        This should be called before discarding the OHLCV_Database instance to ensure 
+        no recent data remains unmerged and to remove the temp folder completely.
+
+        Steps:
+          1. If there is a `_last_used_path`, compress (merge) the associated CSV 
+             data into its Parquet file.
+          2. Remove the 'temp' directory and all contents from disk.
+        """
+        if self._last_used_path is not None:
+            if self._last_used_path.exists() and self._last_used_path.stat().st_size > 0:
+                last_product = self._last_used_path.stem
+                self._compress(last_product)
+
+        shutil.rmtree(self._tempdir, ignore_errors=True)
        
