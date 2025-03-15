@@ -1,6 +1,5 @@
-from ..order_book import OrderBook
-from .database import Database
+from .write_only_database import WriteOnlyDatabase
 
-class OrderBookDatabase(Database):
+class OrderBookDatabase(WriteOnlyDatabase):
     pass
     
