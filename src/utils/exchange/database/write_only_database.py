@@ -18,8 +18,16 @@ efficiently.
 #### Example Subclass Implementation:
 ```python
 class OHLCVDatabase(WriteOnlyDatabase):
+    def __enter__(self):
+        ... # Custom implementation
+
+    @abstractmethod
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        ... # Custom implementation
+        
     def insert(self, records: Dict[str, Any]) -> None:
-        pass  # Custom implementation
+        ... # Custom implementation
+        
 
 """
 from abc import ABC, abstractmethod
@@ -67,6 +75,14 @@ class WriteOnlyDatabase(ABC):
             product_records (Dict[str, Any]): Dictionary where keys are symbols (e.g., "BTC-USD")
                                       and values are corresponding OHLCV or order book data.
         """
+        pass
+
+    @abstractmethod
+    def __enter__(self):
+        pass
+
+    @abstractmethod
+    def __exit__(self, exc_type, exc_val, exc_tb):
         pass
 
  
