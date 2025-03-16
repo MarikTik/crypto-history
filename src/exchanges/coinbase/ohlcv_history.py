@@ -21,7 +21,7 @@ class OHLCV_History(exchange.OHLCV_History):
   
     def __init__(self, product: str, granularity: int | None = 60, rate_limit: float = 1/8):
         granularity = granularity if granularity is not None else 60 # This line is required by the base class method `fetch_many`
-        super().__init__("coinbase", product, granularity)
+        super().__init__(product, granularity)
         self._rate_limit = rate_limit
         self._session: Optional[aiohttp.ClientSession] = None   
         self._logger = logger_manager.get_logger(Path("coinbase", "ohlcv", f"{self._product}.log"))
