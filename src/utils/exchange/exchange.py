@@ -23,8 +23,8 @@ Assumptions & Usage:
 - This design is suitable when each exchange only needs to share its 
   specialized class types, without needing dedicated state per instance.
 """
-from ohlcv_history import OHLCV_History
-from order_book import OrderBook
+from .ohlcv_history import OHLCV_History
+from .order_book import OrderBook
 from typing import Type
 
 
