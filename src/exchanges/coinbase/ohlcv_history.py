@@ -6,7 +6,7 @@ from aiohttp import ContentTypeError
 from json import JSONDecodeError
 from pathlib import Path
 
-from utils.loggers.logger import logger_manager
+from loggers import logger_manager
 import utils.exchange as exchange
 from utils.algorithms import binary_search_first_occurrence_async
 from utils.configs import CONFIG
