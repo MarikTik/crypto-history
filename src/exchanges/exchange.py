@@ -11,6 +11,15 @@ class-level attributes with their own implementations:
         ohlcv = CoinbaseOHLCV
         order_book = CoinbaseOrderBook
 
+in case an exchange needs to deviate from a standard database implementation it may override the default types
+`OHLCV_Database` for `ohlcv_db` and/or `OrderBookDatabase` for `order_book_db` as:
+
+    class Kraken(Exchange):
+        ohlcv = CoinbaseOHLCV
+        order_book = CoinbaseOrderBook
+        ohlcv_db = KrakenCustomOHLCV_DB
+        order_book_db = KrakenCustomOrderBookDB
+
 By storing types rather than instances, callers can directly invoke
 class methods (like `fetch_many`) on `Exchange.ohlcv` without needing 
 to instantiate an `Exchange` object.
@@ -25,6 +34,7 @@ Assumptions & Usage:
 """
 from .ohlcv_history import OHLCV_History
 from .order_book import OrderBook
+from database import *
 from typing import Type
 
 
@@ -39,6 +49,15 @@ class Exchange:
             ohlcv = CoinbaseOHLCV
             order_book = CoinbaseOrderBook
 
+    in case an exchange needs to deviate from a standard database implementation it may override the default types
+    `OHLCV_Database` for `ohlcv_db` and/or `OrderBookDatabase` for `order_book_db` as:
+
+        class Kraken(Exchange):
+          ohlcv = CoinbaseOHLCV
+          order_book = CoinbaseOrderBook
+          ohlcv_db = KrakenCustomOHLCV_DB
+          order_book_db = KrakenCustomOrderBookDB
+      
     Attributes:
         ohlcv (Type[OHLCV_History]):
             A reference to a subclass of `OHLCV_History` that implements 
@@ -47,7 +66,21 @@ class Exchange:
         order_book (Type[OrderBook]):
             A reference to a subclass of `OrderBook` that implements
             exchange-specific logic for accessing the order book data.
+        
+        ohlcv_db(Type[WriteOnlyDatabase]):
+            A reference to a subcalss of `WriteOnlyDatabase` that implements
+            the `write` method as well as `__enter__` and `__exit__` for 
+            storing ohlcv data
+
+        order_book_db(Type[WriteOnlyDatabase]):
+            A reference to a subcalss of `WriteOnlyDatabase` that implements
+            the `write` method as well as `__enter__` and `__exit__` for 
+            storing order book data
+        
     """
 
     ohlcv: Type[OHLCV_History]
     order_book: Type [OrderBook]
+
+    ohlcv_db: Type[WriteOnlyDatabase] = OHLCV_Database
+    order_book_db: Type[WriteOnlyDatabase] = OrderBookDatabase
