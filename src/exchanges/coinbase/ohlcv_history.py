@@ -147,7 +147,8 @@ class OHLCV_History(exchange.OHLCV_History):
 
         if isinstance(start_date, str):
             start_date = datetime.fromisoformat(start_date).replace(tzinfo=timezone.utc)
-
+        if isinstance(end_date, str):
+            end_date = datetime.fromisoformat(end_date).replace(tzinfo=timezone.utc)
         if end_date is None or end_date > now:
             end_date = now  
         elif isinstance(end_date, str):
