@@ -1,4 +1,4 @@
-import utils.exchange as exchange
+from ..order_book import OrderBook as OrderBookBase
 
-class OrderBook(exchange.OrderBook):
+class OrderBook(OrderBookBase):
     pass

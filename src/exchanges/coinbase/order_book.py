@@ -17,7 +17,7 @@ Dependencies:
 """
 
 
-import utils.exchange as exchange
+from ..order_book import OrderBook as OrderBookBase
 from typing import List, Dict, AsyncGenerator, Optional, Union, Tuple
 from datetime import datetime, timezone
 from coinbase.websocket import WSClient
@@ -25,7 +25,7 @@ import asyncio
 import heapq
 import json
 
-class OrderBook(exchange.OrderBook):
+class OrderBook(OrderBookBase):
     """
     Manages real-time order book data for multiple cryptocurrency trading pairs 
     using the Coinbase WebSocket API. Keeps track of the top N bid/ask levels.

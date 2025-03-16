@@ -3,8 +3,8 @@ from pathlib import Path
 from parser import Parser
 from datetime import datetime
 from typing import Dict, List
-from utils.exchange import OHLCV_Database, OrderBookDatabase, Exchange
-
+from exchanges import Exchange
+from database import OHLCV_Database, OrderBookDatabase
 from exchanges import *
 
 exchanges: Dict[str, Exchange] = {
@@ -15,10 +15,11 @@ exchanges: Dict[str, Exchange] = {
      }
 
 async def download_order_book(exchange: Exchange, products: List[str], depth: int, frequency: float | int, end_date: datetime, directory: Path):
-     async with exchange.order_book(products=products, frequency=frequency, depth=depth) as order_book:
-          with OrderBookDatabase(directory) as db:
-               async for snapshot in order_book.snapshots(until=end_date):
-                    db.write(snapshot)
+     pass
+     # async with exchange.order_book(products=products, frequency=frequency, depth=depth) as order_book:
+     #      with OrderBookDatabase(directory) as db:
+     #           async for snapshot in order_book.snapshots(until=end_date):
+     #                db.write(snapshot)
 
 async def download_ohlcv(exchange: Exchange, products: Dict[str, Dict], directory: Path):
      gen = exchange.ohlcv.fetch_many(products=products)

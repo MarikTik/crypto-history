@@ -7,13 +7,13 @@ from json import JSONDecodeError
 from pathlib import Path
 
 from loggers import logger_manager
-import utils.exchange as exchange
+from ..ohlcv_history import OHLCV_History as OHLCV_HistoryBase
 from utils.algorithms import binary_search_first_occurrence_async
 from utils.configs import CONFIG
 
 
 
-class OHLCV_History(exchange.OHLCV_History):
+class OHLCV_History(OHLCV_HistoryBase):
 
     COINBASE_OHLCV_URI = "https://api.exchange.coinbase.com/products/{}/candles"
     MAX_CANDLES = 300 # Max Candles allowed per request 
