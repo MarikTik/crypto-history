@@ -5,8 +5,7 @@ from typing import Union, Optional, Dict, TypeVar, Generic, Any, Type, AsyncGene
  
 T = TypeVar("T", bound="OHLCV_History")
 class OHLCV_History(ABC, Generic[T]):
-    def __init__(self, exchange: str, product: str, granularity: int):
-        self._exchange = exchange
+    def __init__(self, product: str, granularity: int):
         self._product = product
         self._granularity = granularity
 
@@ -35,8 +34,8 @@ class OHLCV_History(ABC, Generic[T]):
         default_start_date: str) -> AsyncGenerator[List[int | float], None]:
         pass
 
-    @staticmethod
-    async def fetch_many(cls: Type[T], products: Dict[str, Dict]) -> AsyncGenerator[Dict[str, List[int | float]], None]:
+    @classmethod
+    async def fetch_many(cls: 'Type[T]', products: Dict[str, Dict]) -> AsyncGenerator[Dict[str, List[int | float]], None]:
         """
         Fetches OHLCV data for multiple products asynchronously.
         This method allows selecting which subclass of OHLCV_History should be used.
