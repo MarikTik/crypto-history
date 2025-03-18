@@ -78,7 +78,7 @@ class WriteOnlyDatabase(ABC):
         pass
 
     @abstractmethod
-    def __enter__(self):
+    def __enter__(self) -> "WriteOnlyDatabase":
         pass
 
     @abstractmethod

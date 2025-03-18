@@ -140,7 +140,7 @@ class OHLCV_Database(WriteOnlyDatabase):
         with csv_path.open("w"): # Clear the CSV
             pass
         
-    def __enter__(self):
+    def __enter__(self) -> "OHLCV_Database":
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
