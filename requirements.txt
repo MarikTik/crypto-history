@@ -5,3 +5,8 @@ pyarrow
 coinbase-advanced-py
 deltalake
 duckdb
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+google-api-python-client
+rich
