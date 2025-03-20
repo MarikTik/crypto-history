@@ -17,7 +17,7 @@ class OrderBook(ABC):
         self._depth = depth
 
     @abstractmethod    
-    async def __aenter__(self):
+    async def __aenter__(self) -> "OrderBook":
         """Async context manager entry: Initializes WebSocket client."""
 
     @abstractmethod

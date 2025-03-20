@@ -10,7 +10,7 @@ class OHLCV_History(ABC, Generic[T]):
         self._granularity = granularity
 
     @abstractmethod
-    async def __aenter__(self):
+    async def __aenter__(self) -> "OHLCV_History":
         """Async context manager entry: Create session."""
         return self
     
