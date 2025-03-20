@@ -176,7 +176,7 @@ class OHLCV_History(OHLCV_HistoryBase):
             return
 
         logger.info(f"🎉 Found first occurrence of Coinbase data")
-        logger.info(f"📡 Fetching historical data for {self._product} from {start_date} to {end_date} with {self._granularity}s granularity.")
+        logger.info(f"📡 Fetching historical data for {self._product} from {datetime.fromtimestamp(first_available_timestamp)} to {end_date} with {self._granularity}s granularity.")
 
         last_fetched = datetime.fromtimestamp(first_available_timestamp, tz=timezone.utc)
         finished = False
