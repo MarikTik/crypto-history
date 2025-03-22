@@ -6,7 +6,7 @@ from sys import argv
 logs_path = Path("logs", "coinbase", "ohlcv")
 
 def is_finished(last_line: str) -> bool:
-    return "Completed download" in last_line
+    return "Completed download" in last_line or "End of" in last_line
 
 def is_reference_point(line: str) -> bool:
     return "Fetching historical data" in line
