@@ -6,7 +6,7 @@ from sys import argv
 logs_path = Path("logs", "coinbase", "ohlcv")
 
 def is_finished(last_line: str) -> bool:
-    return "Reached current" in last_line
+    return "Completed download" in last_line
 
 def is_reference_point(line: str) -> bool:
     return "Fetching historical data" in line
@@ -23,6 +23,7 @@ def main():
             lines = log.readlines()
             current_line = lines[-1]
             if not is_finished(current_line):
+                print(f"Processing [bold purple]{path.stem}")
                 for line in lines:
                     if is_reference_point(line):
                         info_line = line
@@ -33,7 +34,7 @@ def main():
                 split = current_line.split(" ")
                 current_date = datetime.fromisoformat(split[11])
 
-                print(f"Processing [bold purple]{path.stem}")
+
                 percent = (current_date - start_date) / (end_date - start_date) * 100 
                 fillers = int(percent) * "="
 
