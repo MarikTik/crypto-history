@@ -180,6 +180,9 @@ class Parser:
  
           ohlcv_file_parser = ohlcv_subparsers.add_parser("file", help="Use a JSON file to specify coins and parameters.")
           ohlcv_file_parser.add_argument("file_path", type=str, help="Path to the JSON file.")
+          ohlcv_file_parser.add_argument("--start_date", type=str, nargs="?", default=DEFAULT_START_DATE, help="Start date (format: YYYY-MM-DD).")
+          ohlcv_file_parser.add_argument("--end_date", type=str, nargs="?", default=str(datetime.now(timezone.utc).date()), help="End date.")
+          ohlcv_file_parser.add_argument("--granularity", type=int, nargs="?", default=DEFAULT_GRANULARITY, choices=[60, 300, 900, 3600, 21600, 86400], help="Granularity in seconds (default: 60s).")
           ohlcv_file_parser.add_argument("--dir", type=str, default=None, help="Database directory. Defaults to data/exchange_name/ohlcv/")
 
           ohlcv_manual_parser = ohlcv_subparsers.add_parser("manual", help="Manually specify coin and parameters.")
@@ -259,14 +262,14 @@ class Parser:
                     raise ValueError(f"File not found: {file_path}")
 
                with open(file_path, "r") as f:
-                    config: Dict = json.load(f)
+                    config: Dict[str, Dict] = json.load(f)
 
                for product, entry in config.items():
                     if args.download_type == "ohlcv":
                          parsed_data[product] = {
-                              "start_date": entry.get("start_date", DEFAULT_START_DATE),
-                              "end_date": entry.get("end_date", str(datetime.now(timezone.utc).date())),
-                              "granularity": entry.get("granularity", DEFAULT_GRANULARITY),
+                              "start_date": entry.get("start_date", args.__dict__.get("start_date", DEFAULT_START_DATE)),
+                              "end_date": entry.get("end_date", args.__dict__.get("end_date", str(datetime.now(timezone.utc).date()))), # permit global override
+                              "granularity": entry.get("granularity", args.__dict__.get("granularity", DEFAULT_GRANULARITY)),
                          }
 
                     elif args.download_type == "order_book":
