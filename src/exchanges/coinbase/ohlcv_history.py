@@ -40,7 +40,7 @@ class OHLCV_History(OHLCV_HistoryBase):
     async def fetch_timeframe(
         self,
         start_time: datetime,
-        end_time: Optional[datetime] = None) -> List[int | float] | Literal["not_found", "api_failure", "no_data", "timeout_error"]:
+        end_time: Optional[datetime] = None) -> List[int | float] | Literal["not_found", "api_failure", "no_data", "timeout_error", "rate_limited", "server_error", "network_error"]:
         """
         Fetches a specific time range of cryptocurrency candle data from Coinbase API.
         Args:
@@ -56,6 +56,7 @@ class OHLCV_History(OHLCV_HistoryBase):
                  `"timeout_error"` if the request took longer than TIMEOUT seconds.
                  `"rate_limited"` if the request was blocked due to API rate limits (429).
                  `"server_error"` if Coinbase returns a 5xx server error.
+                 `"network_error"` if a netwrok error occurred.
 
         """
         if not self._session:
@@ -87,46 +88,37 @@ class OHLCV_History(OHLCV_HistoryBase):
         try:
             async with self._session.get(url, params=params, headers=headers, timeout=self.TIMEOUT) as response:
                 if response.status == 404:
-                    logger.critical(f"❌ {self._product} not found in database")
                     return "not_found"
 
                 if response.status == 429:
-                    logger.warning(f"🔄 Rate limit hit for {self._product}. Coinbase suggests retrying later.")
                     return "rate_limited"
 
                 if response.status >= 500:
-                    logger.error(f"⚠️ Server error {response.status} for {self._product}.")
                     return "server_error"
 
                 if response.status != 200:
-                    logger.error(f"⚠️ fetching {self._product}: ({response.status}) {await response.text()}")
                     return "api_failure" 
 
                 try:
                     data = await response.json()
                 except (JSONDecodeError, ContentTypeError):
-                    logger.error(f"⚠️ Malformed JSON response for {self._product}: ({response.status})")
-                    return "api_failure"
+                    return "api_failure" # f"⚠️ Malformed JSON response for {self._product}: ({response.status})"
 
                 if not isinstance(data, list):
-                    logger.error(f"⚠️ Unexpected response format for {self._product}: {data}")
                     return "api_failure"
 
                 if data:
                     logger.debug(f"📊 Downloaded {len(data)} candles for {self._product}: {start_time} → {end_time}")
                     return data
 
-              
-                logger.warning(f"⚠️ No data for {self._product}: {start_time} → {end_time}")
                 return "no_data" 
 
         except asyncio.TimeoutError:
-               logger.error(f"⏳ Timeout fetching data for {self._product}: {start_time} → {end_time}. Retrying later.")
                return "timeout_error"  # Avoid getting stuck due to connection problems
           
         except aiohttp.ClientError as e:
             logger.error(f"🚨 Network error fetching {self._product}: {e}")
-            return "api_failure"
+            return "network_error"
         
 
     
@@ -147,16 +139,19 @@ class OHLCV_History(OHLCV_HistoryBase):
 
         if isinstance(start_date, str):
             start_date = datetime.fromisoformat(start_date).replace(tzinfo=timezone.utc)
+
         if isinstance(end_date, str):
             end_date = datetime.fromisoformat(end_date).replace(tzinfo=timezone.utc)
+
         if end_date is None or end_date > now:
-            end_date = now  
+            end_date = now
+
         elif isinstance(end_date, str):
             end_date = datetime.fromisoformat(end_date).replace(tzinfo=timezone.utc)
 
         logger.info(f"🫣 Seeking first occurrence of Coinbase data for {self._product} from {start_date} to {end_date}")
 
-        async def condition(timestamp: int) -> bool:
+        async def condition(timestamp: float) -> bool:
             datetime_obj = datetime.fromtimestamp(timestamp, tz=timezone.utc)
             response = await self.fetch_timeframe(datetime_obj)
             if not isinstance(response, list):
@@ -166,8 +161,8 @@ class OHLCV_History(OHLCV_HistoryBase):
 
         first_available_timestamp = await binary_search_first_occurrence_async(
             condition, 
-            int(start_date.timestamp()),
-            int(end_date.timestamp()),
+            start_date.timestamp(),
+            end_date.timestamp(),
             max_depth=32
         )
 
@@ -182,39 +177,54 @@ class OHLCV_History(OHLCV_HistoryBase):
         finished = False
         
         while last_fetched <= end_date and not finished:
-          
             result = await self.fetch_timeframe(last_fetched, end_date)
-            if not isinstance(result, list):  
+            if isinstance(result, str):  
                 logger.error(f"🚨 Unexpected response type for {self._product}: {result}")
                 last_fetched += timedelta(seconds=self._granularity)
-                continue  
 
-            if result in ["api_failure", "timeout_error"]:
-                last_fetched += timedelta(seconds=OHLCV_History.MAX_CANDLES)  
-                logger.warning(f"⚠️ Fetching issue for {self._product}, skipping to {last_fetched}")
-                await asyncio.sleep(self._rate_limit)  
-                continue  
-            
-            fetched_timestamps = [candle[0] for candle in result]
-            if not fetched_timestamps:
-                last_fetched += timedelta(seconds=self._granularity)
-                logger.warning(f"⚠️ No new data for {self._product}, skipping to next batch.")
-                continue
+                if result in ["api_failure", "timeout_error"]:
+                    last_fetched += timedelta(seconds=OHLCV_History.MAX_CANDLES)  
+                    logger.warning(f"⚠️ Fetching issue for {self._product} ({result}). Skipping to {last_fetched}") 
+                    continue  
+                
+                if result == "not_found":
+                    logger.error(f"🚫 {self._product} was not found")
+                    break
 
-            new_last_fetched = datetime.fromtimestamp(max(fetched_timestamps), tz=timezone.utc)
+                if result == "no_data":
+                    last_fetched += timedelta(seconds=self._granularity)
+                    if last_fetched > end_date:
+                        logger.info(f"✅ Completed download for {self._product} on {datetime.now(timezone.utc)}")
+                        return
+                    logger.warning(f"⚠️ No new data for {self._product}, searching next batch from {last_fetched} to {end_date}.")
+                    first_available_timestamp = await binary_search_first_occurrence_async(
+                        condition, 
+                        last_fetched.timestamp(),
+                        end_date.timestamp(),
+                        max_depth=32
+                    )
+                 
+                    if first_available_timestamp == -1:
+                        logger.error(f"❌ End of ohlcv data for {self._product} was reached prematurely.")
+                        break
+
+                    last_fetched = datetime.fromtimestamp(first_available_timestamp, tz=timezone.utc)
+                    logger.info(f"🎉 Found new first occurrence on {last_fetched}")
+            else:
+                fetched_timestamps = [candle[0] for candle in result] # In OHLCV data the first element is the timestamp
+                new_last_fetched = datetime.fromtimestamp(max(fetched_timestamps), tz=timezone.utc)
+
+                if new_last_fetched == last_fetched:  
+                    new_last_fetched += timedelta(seconds=self._granularity)
+                    logger.warning(f"⚠️ Stuck on {self._product} at {last_fetched}, forcing move to {new_last_fetched}")
+
+                last_fetched = new_last_fetched  
+
+                yield result
            
-            if new_last_fetched == last_fetched:  
-                new_last_fetched += timedelta(seconds=self._granularity)
-                logger.warning(f"⚠️ Stuck on {self._product} at {last_fetched}, forcing move to {new_last_fetched}")
+                if datetime.now(timezone.utc).date() == last_fetched.date():
+                    logger.info(f"✅ Completed download for {self._product} on {now}")
+                    finished = True
+                    break  
 
-            last_fetched = new_last_fetched  
-
-            yield result
-
-            now = datetime.now(timezone.utc)
-            if last_fetched.year == now.year and last_fetched.month == now.month:
-                logger.info(f"🔄 Reached current month for {self._product}")
-                finished = True
-                break  
-
-            await asyncio.sleep(self._rate_limit)  
+                await asyncio.sleep(self._rate_limit)  
