@@ -1,13 +1,28 @@
 {
+     "python.formatting.provider": "black",
+     "python.formatting.blackArgs": [
+          "--line-length",
+          "88"
+     ],
+     "editor.formatOnSave": true,
+     "editor.codeActionsOnSave": {
+          "source.organizeImports": "always"
+     },
+     "python.linting.enabled": true,
+     "python.linting.flake8Enabled": true,
+     "python.sortImports.args": [
+          "--profile",
+          "black"
+     ],
      "files.exclude": {
           "**/.git": true,
           "**/.svn": true,
           "**/.hg": true,
           "**/CVS": true,
           "**/.DS_Store": true,
-          "**/Thumbs.db": true, 
-          "**/__pycache__" : true,
-          "**/nohup*" : true,
-          "**/.pytest_cache" : true
+          "**/Thumbs.db": true,
+          "**/__pycache__": true,
+          "**/nohup*": true,
+          "**/.pytest_cache": true
      }
 }
