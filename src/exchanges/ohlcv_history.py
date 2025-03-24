@@ -1,19 +1,32 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Union, Optional, Dict, TypeVar, Generic, Any, Type, AsyncGenerator, List
+from typing import (
+    Union,
+    Optional,
+    Dict,
+    TypeVar,
+    Generic,
+    Type,
+    AsyncGenerator,
+    List,
+)
+from pathlib import Path
+from loggers import logger_manager
 
- 
 T = TypeVar("T", bound="OHLCV_History")
+
+
 class OHLCV_History(ABC, Generic[T]):
-    def __init__(self, product: str, granularity: int):
+    def __init__(self, product: str, granularity: int, log_dir: Path):
         self._product = product
         self._granularity = granularity
+        self._logger = logger_manager.get_logger(log_dir)
 
     @abstractmethod
     async def __aenter__(self) -> "OHLCV_History":
         """Async context manager entry: Create session."""
         return self
-    
+
     @abstractmethod
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit: Close session properly."""
@@ -21,21 +34,23 @@ class OHLCV_History(ABC, Generic[T]):
 
     @abstractmethod
     async def fetch_timeframe(
-        self,
-        start_time: datetime,
-        end_time: Optional[datetime]) -> AsyncGenerator[List[int | float], None]:
+        self, start_time: datetime, end_time: Optional[datetime]
+    ) -> AsyncGenerator[List[int | float], None]:
         pass
-    
+
     @abstractmethod
     async def fetch(
         self,
         start_date: Optional[Union[str, datetime]],
         end_date: Optional[Union[str, datetime]],
-        default_start_date: str) -> AsyncGenerator[List[int | float], None]:
+        default_start_date: str,
+    ) -> AsyncGenerator[List[int | float], None]:
         pass
 
     @classmethod
-    async def fetch_many(cls: 'Type[T]', products: Dict[str, Dict]) -> AsyncGenerator[Dict[str, List[int | float]], None]:
+    async def fetch_many(
+        cls: "Type[T]", products: Dict[str, Dict]
+    ) -> AsyncGenerator[Dict[str, List[int | float]], None]:
         """
         Fetches OHLCV data for multiple products asynchronously.
         This method allows selecting which subclass of OHLCV_History should be used.
@@ -56,8 +71,10 @@ class OHLCV_History(ABC, Generic[T]):
         """
 
         for product, params in products.items():
-            start_date, end_date, granularity = [params.get(key, None) for key in ["start_date", "end_date", "granularity"]]
-            async with cls(product, granularity) as instance:   
+            start_date, end_date, granularity = [
+                params.get(key, None)
+                for key in ["start_date", "end_date", "granularity"]
+            ]
+            async with cls(product, granularity) as instance:
                 async for ohlcv_list in instance.fetch(start_date, end_date):
-                    yield {"product" : product, "data" : ohlcv_list}
-       
+                    yield {"product": product, "data": ohlcv_list}
