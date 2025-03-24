@@ -1,108 +1,184 @@
 from coinbase.websocket import WSClient, WebsocketResponse
+from math import ceil
 import asyncio
 import json
-import os
-import heapq
-from collections import defaultdict
+import logging
 from datetime import datetime, timezone
+from typing import Dict, Union, List, Tuple
+from pathlib import Path
 
-# Store order book data
-order_book = {
-    "bids": [],
-    "asks": []
-}
+product_order_book: Dict[str, Dict] = {}
 
-# Dictionary to maintain best 50 prices
-best_prices = defaultdict(lambda: {"bids": [], "asks": []})
 
-# Global timestamp for throttling updates
-last_update_time = None
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
-def update_order_book(product_id, side, price, quantity):
-    """
-    Updates the order book with new bid/ask prices, keeping only the top 50 levels.
-    """
-    book_side = "bids" if side == "bid" else "asks"
-    
-    # Convert price & quantity to float
-    price, quantity = float(price), float(quantity)
+MAX_DEPTH = 5
 
-    # Remove old price level if quantity is 0
-    if quantity == 0:
-        best_prices[product_id][book_side] = [
-            (p, q) for p, q in best_prices[product_id][book_side] if p != price
-        ]
-    else:
-        # Update or add new price level
-        updated = False
-        for i, (p, q) in enumerate(best_prices[product_id][book_side]):
-            if p == price:
-                best_prices[product_id][book_side][i] = (price, quantity)
-                updated = True
-                break
-        if not updated:
-            best_prices[product_id][book_side].append((price, quantity))
+with open("extras/order_book_products.json", "r") as f:
+    products = list(json.load(f).keys())
 
-    # Keep only top 50 prices sorted correctly
-    if book_side == "bids":
-        best_prices[product_id][book_side] = sorted(
-            best_prices[product_id][book_side], key=lambda x: -x[0]
-        )[:50]  # Highest prices first
-    else:
-        best_prices[product_id][book_side] = sorted(
-            best_prices[product_id][book_side], key=lambda x: x[0]
-        )[:50]  # Lowest prices first
+
+def split_updates(updates: List[Dict]) -> tuple[List[Dict], List[Dict]]:
+    for i, update in enumerate(updates):
+        if update["side"] == "offer":
+            return updates[:i], updates[i:]
+    return updates, []  # all bids, no offers
+
+
+def apply_update(
+    side: str, updates: List[Dict], levels: List[Tuple[float, float]]
+) -> List[Tuple[float, float]]:
+    book = {price: quantity for price, quantity in levels}
+    for update in updates:
+        price = float(update["price_level"])
+        quantity = float(update["new_quantity"])
+        if quantity == 0:
+            book.pop(price, None)
+        else:
+            book[price] = quantity
+    sorted_book = sorted(
+        book.items(), key=lambda x: -x[0] if side == "bid" else x[0]
+    )
+    return sorted_book[:MAX_DEPTH]
+
+
+def to_ts(s: str):
+    return int(datetime.fromisoformat(s[:26]).timestamp())
+
 
 def on_message(msg):
     """
     Handles WebSocket messages and updates the order book.
     """
-    global last_update_time
-
     try:
-        data = json.loads(msg)
-
-        if data["channel"] != "l2_data":
+        data: Dict[Dict] = json.loads(msg)
+        if "channel" not in data or data["channel"] != "l2_data":
             return  # Ignore non-order book messages
 
-        for event in data["events"]:
-            if event["type"] == "snapshot" or event["type"] == "update":
-                product_id = event["product_id"]
-                for update in event["updates"]:
-                    update_order_book(
-                        product_id, update["side"], update["price_level"], update["new_quantity"]
-                    )
+        events: List[Union[Dict, str]] = data.get("events", [])
 
-        # Throttle updates to once every 30 seconds
-        current_time = datetime.now(timezone.utc)
-        if last_update_time is None or (current_time - last_update_time).total_seconds() >= 30:
-            print(f"\n📊 Order Book for {product_id} (Top 50 levels)")
-            print("📉 Best Bids:")
-            for price, quantity in best_prices[product_id]["bids"]:
-                print(f"  {price} -> {quantity}")
+        for event in events:
+            event_type = event.get("type")
+            if event_type in ("snapshot", "update"):
+                product_id = event.get("product_id")
+                updates = event.get("updates", [])
+                if updates:
+                    timestamp = updates[0]["event_time"]
+                else:
+                    continue
 
-            print("\n📈 Best Asks:")
-            for price, quantity in best_prices[product_id]["asks"]:
-                print(f"  {price} -> {quantity}")
+            if event_type == "snapshot":
+                product_order_book[product_id] = {}
+                bids, asks = [], []
+                for update in updates:
+                    price = float(update["price_level"])
+                    quantity = float(update["new_quantity"])
+                    update_type = update["side"]
+                    if update_type == "bid" and len(bids) < MAX_DEPTH:
+                        bids.append((price, quantity))
+                    elif update_type == "offer" and len(asks) < MAX_DEPTH:
+                        asks.append((price, quantity))
+                    else:
+                        break
 
-            last_update_time = current_time
+            # !RULE:
+            # Coinbase always sends sorted data, the first fragment of the updates list is the `bid`(s)
+            # The second fragment is the `offer`(s)
+
+            elif event.get("type") == "update":
+                current = product_order_book.get(
+                    product_id, {"timestamp": timestamp, "bids": [], "asks": []}
+                )
+                old_bids = current["bids"]
+                old_asks = current["asks"]
+                bid_updates, ask_updates = split_updates(updates)
+                bids = apply_update("bid", bid_updates, old_bids)
+                asks = apply_update("offer", ask_updates, old_asks)
+
+            product_order_book[product_id] = {
+                "timestamp": to_ts(timestamp),
+                "bids": bids,
+                "asks": asks,
+            }
 
     except Exception as e:
-        print(f"Error processing message: {e}")
+        logging.error(f"❌ Error processing message: {e}")
+
+
+async def periodic_writer(interval: int = 5):
+    print("🟢 periodic_writer started")
+    while True:
+        await asyncio.sleep(interval)
+        if not product_order_book:
+            print("⏳ Waiting for order book data...")
+            continue
+
+        for product_id, snapshot in product_order_book.items():
+            try:
+                path = Path("data", "coinbase", "order_book", product_id)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                with path.open("a") as f:
+                    json.dump(snapshot, f)
+                    f.write("\n")
+                print(f"✅ Wrote snapshot for {product_id}")
+            except Exception as e:
+                print(f"❌ Error writing {product_id}: {e}")
+
 
 async def main():
-    client = WSClient(on_message=on_message)
-    client.open()
-    await asyncio.sleep(1)  # Ensure connection is established before subscribing
+    golden_number = 30
+    clients_num = ceil(len(products) / golden_number)
 
-    # Subscribe to Level2 order book for BTC-USD
-    client.level2(product_ids=["BTC-USD"])
-    
+    clients = [WSClient(on_message=on_message) for _ in range(clients_num)]
+
+    for client in clients:
+        client.open()
+
+    await asyncio.sleep(3)
+
+    product_slice = lambda i: products[
+        i * golden_number : (i + 1) * golden_number
+    ]
+    for i, client in enumerate(clients):
+        section = product_slice(i)
+        logging.info(f"📡 Subscribing to order books: {section}")
+        client.level2(product_ids=section)
+
+    writer_task = asyncio.create_task(periodic_writer(5))
+    # Run WebSocket client in a separate task
+    loop = asyncio.get_running_loop()
+    ws_tasks = [
+        loop.run_in_executor(None, client.run_forever_with_exception_check)
+        for client in clients
+    ]
+
     try:
-        client.run_forever_with_exception_check()
+        await asyncio.gather(writer_task, *ws_tasks)
+
     except KeyboardInterrupt:
-        print("Closing WebSocket...")
-        client.level2_unsubscribe(product_ids="BTC-USD")
+        logging.warning("❌ Closing WebSocket...")
+        for i, client in enumerate(clients):
+            client.level2_unsubscribe(product_slice(i))
         client.close()
 
-asyncio.run(main())
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
+
+#   "updates": [
+#         {
+#             "side": "bid",
+#             "event_time": "2025-03-21T00:03:58.668950764Z",
+#             "price_level": "2.4328",
+#             "new_quantity": "1185.523621"
+#         },
+
+#         {
+#     "side": "offer",
+#     "event_time": "2025-03-24T02:34:13.294636653Z",
+#     "price_level": "0.0795",
+#     "new_quantity": "1833.05"
+# }
