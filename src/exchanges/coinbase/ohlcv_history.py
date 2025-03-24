@@ -1,3 +1,30 @@
+"""
+ohlcv_history.py
+
+Implements the `OHLCV_History` abstract base class for the Coinbase exchange.
+Provides logic to asynchronously fetch historical and live OHLCV (Open, High, Low, Close, Volume)
+data from the Coinbase API.
+
+Classes:
+    - OHLCV_History: Coinbase-specific subclass of the base OHLCV_History class.
+
+Functionality:
+    - Fetches data in time chunks respecting Coinbase's rate and candle limits
+    - Handles network errors, malformed responses, rate limiting, and retries
+    - Performs a binary search to locate the first available timestamp in history
+
+Constants:
+    - COINBASE_OHLCV_URI: Base URI for Coinbase candle data
+    - MAX_CANDLES: Maximum candles per API request
+    - TIMEOUT: Request timeout
+    - REQUEST_RATE_LIMIT: Request frequency limit (1 per 125ms)
+    - NETWORK_COOLDOWN_AFTER_ERROR: Cooldown after certain errors
+
+Example:
+    async with OHLCV_History("BTC-USD", granularity=60) as ohlcv:
+        async for batch in ohlcv.fetch("2022-01-01", "2022-01-02"):
+            process(batch)
+"""
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, AsyncGenerator, Literal, Union, Dict
 import asyncio
@@ -12,7 +39,31 @@ from utils.configs import CONFIG
 
 
 class OHLCV_History(OHLCV_HistoryBase):
+    """Coinbase-specific implementation of the OHLCV_History abstract base class.
 
+    This class provides asynchronous access to OHLCV candle data from the Coinbase
+    exchange using its REST API. It handles batching, rate limiting, error handling,
+    and chunked downloads over a specified time range.
+
+    Attributes:
+        COINBASE_OHLCV_URI (str): URI pattern for Coinbase candle API.
+        MAX_CANDLES (int): Maximum number of candles per request (300).
+        TIMEOUT (int): Request timeout duration in seconds.
+        REQUEST_RATE_LIMIT (float): Maximum number of requests per second.
+        NETWORK_COOLDOWN_AFTER_ERROR (int): Seconds to wait after a network error.
+        _session (Optional[aiohttp.ClientSession]): AIOHTTP session used for API calls.
+
+    Methods:
+        __aenter__(): Creates the aiohttp session for making API requests.
+        __aexit__(): Closes the session cleanly.
+        fetch_timeframe(): Downloads a fixed chunk of candle data.
+        fetch(): Performs full sequential data fetching across a time range.
+        _adjust_end_time(): Ensures end time does not exceed API chunk size.
+        _parse_response(): Parses and validates the API JSON response.
+        _normalize_date(): Converts ISO strings to timezone-aware datetimes.
+        _find_first_valid_timestamp(): Binary search for the first available candle.
+        _handle_fetch_error(): Handles retry, skip, or termination logic on error.
+    """
     COINBASE_OHLCV_URI = "https://api.exchange.coinbase.com/products/{}/candles"
     MAX_CANDLES = 300  # Max Candles allowed per request
     TIMEOUT = 10  # Request timeout in seconds
@@ -99,8 +150,33 @@ class OHLCV_History(OHLCV_HistoryBase):
         end_date: Optional[Union[str, datetime]] = None,
         default_start_date: str = "2012-01-01",
     ) -> AsyncGenerator[List[List[int | float]], None]:
-        """
-        Sequentially fetches historical and live cryptocurrency data.
+        """Sequentially fetches historical and live OHLCV data from Coinbase.
+
+        This method identifies the first valid data timestamp using a binary search,
+        and then iteratively downloads batches of OHLCV data until the specified
+        end time is reached. It handles errors, retry conditions, and adjusts
+        for API limits and known edge cases.
+
+        Args:
+            start_date (Union[str, datetime] or None): Start of the range to fetch.
+                Can be a string in ISO format or a datetime object. If None, uses `default_start_date`.
+            end_date (Union[str, datetime] or None): End of the range to fetch.
+                Defaults to current UTC time if not provided.
+            default_start_date (str): Fallback ISO string used when `start_date` is None.
+
+        Yields:
+            List[List[int | float]]: A list of OHLCV candles, each represented as a list:
+            [timestamp, open, low, high, close, volume].
+
+        Logs:
+            - Missing data
+            - Fetch errors
+            - Rate limiting and server issues
+            - Completion status
+
+        Stops:
+            - When end of data is reached
+            - When unrecoverable error like "not_found" or premature data exhaustion occurs
         """
         now = datetime.now(timezone.utc)
         logger = self._logger
