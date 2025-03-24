@@ -5,3 +5,6 @@ logs/
 venv/
 __pycache__/
 .pytest_cache/
+gd_credentials.json
+token.json
+config.json
