@@ -14,7 +14,7 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-MAX_DEPTH = 5
+MAX_DEPTH = 10
 
 with open("extras/order_book_products.json", "r") as f:
     products = list(json.load(f).keys())
@@ -107,24 +107,34 @@ def on_message(msg):
         logging.error(f"❌ Error processing message: {e}")
 
 
-async def periodic_writer(interval: int = 5):
+lock = asyncio.Lock()
+
+
+async def periodic_writer(interval: int = 1):
     print("🟢 periodic_writer started")
     while True:
         await asyncio.sleep(interval)
-        if not product_order_book:
-            print("⏳ Waiting for order book data...")
+        async with lock:  # Ensures no concurrent modification
+            snapshot_copy = product_order_book.copy()
+
+        if not snapshot_copy:
             continue
 
-        for product_id, snapshot in product_order_book.items():
+        for product_id, snapshot in snapshot_copy.items():
             try:
                 path = Path("data", "coinbase", "order_book", product_id)
                 path.parent.mkdir(parents=True, exist_ok=True)
                 with path.open("a") as f:
                     json.dump(snapshot, f)
                     f.write("\n")
-                print(f"✅ Wrote snapshot for {product_id}")
+                # print(f"✅ Wrote snapshot for {product_id}")
             except Exception as e:
                 print(f"❌ Error writing {product_id}: {e}")
+
+
+async def run_ws_client(client: WSClient):
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, client.run_forever_with_exception_check)
 
 
 async def main():
@@ -146,12 +156,10 @@ async def main():
         logging.info(f"📡 Subscribing to order books: {section}")
         client.level2(product_ids=section)
 
-    writer_task = asyncio.create_task(periodic_writer(5))
+    writer_task = asyncio.create_task(periodic_writer(1))
     # Run WebSocket client in a separate task
-    loop = asyncio.get_running_loop()
     ws_tasks = [
-        loop.run_in_executor(None, client.run_forever_with_exception_check)
-        for client in clients
+        asyncio.create_task(run_ws_client(client)) for client in clients
     ]
 
     try:
