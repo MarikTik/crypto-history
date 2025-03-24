@@ -157,7 +157,7 @@ class OHLCV_History(OHLCV_HistoryBase):
             last_fetched = new_last_fetched
             yield result
 
-            if datetime.now(timezone.utc).date() == last_fetched.date():
+            if now.date() == last_fetched.date():
                 logger.info(
                     f"✅ Completed download for {self._product} on {now}"
                 )
