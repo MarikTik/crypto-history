@@ -155,25 +155,26 @@ class OHLCV_History(OHLCV_HistoryBase):
             datetime_obj = datetime.fromtimestamp(timestamp, tz=timezone.utc)
             response = await self.fetch_timeframe(datetime_obj)
             if not isinstance(response, list):
-                return False
-           
+                return False   
             return True
+        
+        async def search(start_date: datetime, end_date: datetime):
+            return await binary_search_first_occurrence_async(
+                condition,
+                start_date.timestamp(),
+                end_date.timestamp(),
+                max_depth=32
+            )
 
-        first_available_timestamp = await binary_search_first_occurrence_async(
-            condition, 
-            start_date.timestamp(),
-            end_date.timestamp(),
-            max_depth=32
-        )
+        first_timestamp = await search(start_date, end_date)
 
-        if first_available_timestamp == -1:
+        if first_timestamp == -1:
             logger.error(f"⚠️ No historical data found for {self._product} within the given range.")
             return
 
-        logger.info(f"🎉 Found first occurrence of Coinbase data")
-        logger.info(f"📡 Fetching historical data for {self._product} from {datetime.fromtimestamp(first_available_timestamp)} to {end_date} with {self._granularity}s granularity.")
+        logger.info(f"📡 Fetching historical data for {self._product} from {datetime.fromtimestamp(first_timestamp)} to {end_date} with {self._granularity}s granularity.")
 
-        last_fetched = datetime.fromtimestamp(first_available_timestamp, tz=timezone.utc)
+        last_fetched = datetime.fromtimestamp(first_timestamp, tz=timezone.utc)
         finished = False
         
         while last_fetched <= end_date and not finished:
@@ -196,20 +197,16 @@ class OHLCV_History(OHLCV_HistoryBase):
                     if last_fetched > end_date:
                         logger.info(f"✅ Completed download for {self._product} on {datetime.now(timezone.utc)}")
                         return
+                    
                     logger.warning(f"⚠️ No new data for {self._product}, searching next batch from {last_fetched} to {end_date}.")
-                    first_available_timestamp = await binary_search_first_occurrence_async(
-                        condition, 
-                        last_fetched.timestamp(),
-                        end_date.timestamp(),
-                        max_depth=32
-                    )
+                    first_timestamp = await search(last_fetched, end_date)
                  
-                    if first_available_timestamp == -1:
+                    if first_timestamp == -1:
                         logger.error(f"❌ End of ohlcv data for {self._product} was reached prematurely.")
                         break
 
-                    last_fetched = datetime.fromtimestamp(first_available_timestamp, tz=timezone.utc)
-                    logger.info(f"🎉 Found new first occurrence on {last_fetched}")
+                    last_fetched = datetime.fromtimestamp(first_timestamp, tz=timezone.utc)
+                    logger.info(f"Found new block at {last_fetched}")
             else:
                 fetched_timestamps = [candle[0] for candle in result] # In OHLCV data the first element is the timestamp
                 new_last_fetched = datetime.fromtimestamp(max(fetched_timestamps), tz=timezone.utc)
