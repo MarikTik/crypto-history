@@ -111,7 +111,9 @@ class OHLCV_History(OHLCV_HistoryBase):
         logger.info(
             f"🫣 Seeking first occurrence of Coinbase data for {self._product} from {start_dt} to {end_dt}"
         )
-        first_timestamp = await self._find_first_valid_timestamp(start_dt, end_dt)
+        first_timestamp = await self._find_first_valid_timestamp(
+            start_dt, end_dt
+        )
 
         if first_timestamp == -1:
             logger.error(
@@ -129,78 +131,40 @@ class OHLCV_History(OHLCV_HistoryBase):
         while last_fetched <= end_date and not finished:
             result = await self.fetch_timeframe(last_fetched, end_date)
             if isinstance(result, str):
-                logger.error(
-                    f"🚨 Unexpected response type for {self._product}: {result}"
+                should_continue, new_last_fetched = (
+                    await self._handle_fetch_error(result, last_fetched, end_dt)
                 )
-                last_fetched += timedelta(seconds=self._granularity)
-
-                if result in ["api_failure", "timeout_error"]:
-                    last_fetched += timedelta(seconds=OHLCV_History.MAX_CANDLES)
-                    logger.warning(
-                        f"⚠️ Fetching issue for {self._product} ({result}). Skipping to {last_fetched}"
-                    )
-                    continue
-
-                if result == "not_found":
-                    logger.error(f"🚫 {self._product} was not found")
+                if not should_continue:
                     break
-
-                if result == "network_error":
-                    logger.error(f"🚨 Network error fetching {self._product}")
-                    await asyncio.sleep(OHLCV_History.NETWORK_COOLDOWN_AFTER_ERROR)
-
-                if result == "no_data":
-                    last_fetched += timedelta(seconds=self._granularity)
-                    if last_fetched > end_date:
-                        logger.info(
-                            f"✅ Completed download for {self._product} on {datetime.now(timezone.utc)}"
-                        )
-                        return
-
-                    logger.warning(
-                        f"⚠️ No new data for {self._product}, searching next batch from {last_fetched} to {end_date}."
-                    )
-                    first_timestamp = await self._find_first_valid_timestamp(
-                        last_fetched, end_date
-                    )
-
-                    if first_timestamp == -1:
-                        logger.error(
-                            f"❌ End of ohlcv data for {self._product} was reached prematurely."
-                        )
-                        break
-
-                    last_fetched = datetime.fromtimestamp(
-                        first_timestamp, tz=timezone.utc
-                    )
-                    logger.info(f"Found new block at {last_fetched}")
-            else:
-                self._logger.debug(
-                    f"📊 Downloaded {len(result)} candles for {self._product}: {last_fetched} → {self._adjust_end_time(last_fetched, end_date)}"
-                )
-                fetched_timestamps = [
-                    candle[0] for candle in result
-                ]  # In OHLCV data the first element is the timestamp
-                new_last_fetched = datetime.fromtimestamp(
-                    max(fetched_timestamps), tz=timezone.utc
-                )
-
-                if new_last_fetched == last_fetched:
-                    new_last_fetched += timedelta(seconds=self._granularity)
-                    logger.warning(
-                        f"⚠️ Stuck on {self._product} at {last_fetched}, forcing move to {new_last_fetched}"
-                    )
-
                 last_fetched = new_last_fetched
+                continue
 
-                yield result
+            self._logger.debug(
+                f"📊 Downloaded {len(result)} candles for {self._product}: {last_fetched} → {self._adjust_end_time(last_fetched, end_date)}"
+            )
+            fetched_timestamps = [
+                candle[0] for candle in result
+            ]  # In OHLCV data the first element is the timestamp
+            new_last_fetched = datetime.fromtimestamp(
+                max(fetched_timestamps), tz=timezone.utc
+            )
+            if new_last_fetched == last_fetched:
+                new_last_fetched += timedelta(seconds=self._granularity)
+                logger.warning(
+                    f"⚠️ Stuck on {self._product} at {last_fetched}, forcing move to {new_last_fetched}"
+                )
 
-                if datetime.now(timezone.utc).date() == last_fetched.date():
-                    logger.info(f"✅ Completed download for {self._product} on {now}")
-                    finished = True
-                    break
+            last_fetched = new_last_fetched
+            yield result
 
-                await asyncio.sleep(OHLCV_History.REQUEST_RATE_LIMIT)
+            if datetime.now(timezone.utc).date() == last_fetched.date():
+                logger.info(
+                    f"✅ Completed download for {self._product} on {now}"
+                )
+                finished = True
+                break
+
+            await asyncio.sleep(OHLCV_History.REQUEST_RATE_LIMIT)
 
     def _build_params(self, start_time: datetime, end_time: datetime) -> Dict:
         return {
@@ -266,3 +230,60 @@ class OHLCV_History(OHLCV_HistoryBase):
         return await binary_search_first_occurrence_async(
             condition, start.timestamp(), end.timestamp(), max_depth=32
         )
+
+    async def _handle_fetch_error(
+        self,
+        error_type: str,
+        last_fetched: datetime,
+        end_time: datetime,
+    ) -> tuple[bool, datetime]:
+        logger = self._logger
+        new_last_fetched = last_fetched + timedelta(seconds=self._granularity)
+
+        match error_type:
+            case "api_failure" | "timeout_error":
+                skip_to = last_fetched + timedelta(seconds=self.MAX_CANDLES)
+                logger.warning(
+                    f"⚠️ Fetching issue for {self._product} ({error_type}). Skipping to {skip_to}"
+                )
+                return True, skip_to
+
+            case "not_found":
+                logger.error(f"🚫 {self._product} was not found")
+                return False, last_fetched  # Stop loop
+
+            case "network_error":
+                logger.error(f"🚨 Network error fetching {self._product}")
+                await asyncio.sleep(self.NETWORK_COOLDOWN_AFTER_ERROR)
+                return True, new_last_fetched
+
+            case "no_data":
+                new_last_fetched = last_fetched + timedelta(
+                    seconds=self._granularity
+                )
+                # Edge case, if the error was caused by crossing the end date boundary and end date is very close to datetime.now()
+                if new_last_fetched > end_time:
+                    logger.info(
+                        f"✅ Completed download for {self._product} on {datetime.now(timezone.utc)}"
+                    )
+                    return False, last_fetched  # Stop loop
+
+                logger.warning(
+                    f"⚠️ No new data for {self._product}, searching next batch from {new_last_fetched} to {end_time}."
+                )
+                next_ts = await self._find_first_valid_timestamp(
+                    new_last_fetched, end_time
+                )
+                if next_ts == -1:
+                    logger.error(
+                        f"❌ End of ohlcv data for {self._product} was reached prematurely."
+                    )
+                    return False, last_fetched  # Stop loop
+
+                new_start = datetime.fromtimestamp(next_ts, tz=timezone.utc)
+                logger.info(f"Found new block at {new_start}")
+                return True, new_start
+
+            case _:
+                logger.error(f"❓ Unknown error type: {error_type}")
+                return True, new_last_fetched
