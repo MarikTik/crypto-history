@@ -1,7 +1,7 @@
 """
 Abstract Base Class for OHLCV and Order Book Databases.
 
-This module defines `WriteOnlyDatabase`, an abstract base class (ABC) that serves as a foundation 
+This module defines `WriteOnlyDatabase`, an abstract base class (ABC) that serves as a foundation
 for implementing structured storage of financial market data, specifically:
 - **OHLCV Data**: Open-High-Low-Close-Volume historical data.
 - **Order Book Data**: Real-time order book snapshots.
@@ -11,8 +11,8 @@ for implementing structured storage of financial market data, specifically:
 - `query()`: Retrieves stored data for a specified timeframe.
 
 ### Intended Usage:
-This class should be subclassed to implement concrete database solutions (e.g., Delta Lake, 
-DuckDB, SQLite). It provides a common interface for inserting and retrieving financial data 
+This class should be subclassed to implement concrete database solutions (e.g., Delta Lake,
+DuckDB, SQLite). It provides a common interface for inserting and retrieving financial data
 efficiently.
 
 #### Example Subclass Implementation:
@@ -24,24 +24,24 @@ class OHLCVDatabase(WriteOnlyDatabase):
     @abstractmethod
     def __exit__(self, exc_type, exc_val, exc_tb):
         ... # Custom implementation
-        
+
     def insert(self, records: Dict[str, Any]) -> None:
         ... # Custom implementation
-        
+
 
 """
+
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, Any
-
 
 
 class WriteOnlyDatabase(ABC):
     """
     Abstract Base Class for Financial Data Storage.
 
-    This class provides a structured framework for storing and retrieving OHLCV 
-    (Open-High-Low-Close-Volume) or Order Book data. It is designed to be subclassed, 
+    This class provides a structured framework for storing and retrieving OHLCV
+    (Open-High-Low-Close-Volume) or Order Book data. It is designed to be subclassed,
     allowing for specific database implementations.
 
     Attributes:
@@ -50,19 +50,20 @@ class WriteOnlyDatabase(ABC):
     Methods:
         insert(records: Dict[str, Any]) -> None:
             Abstract method for inserting data into the database.
-        
-        query(symbol: str, from_timestamp: Optional[int | float | str | datetime], 
+
+        query(symbol: str, from_timestamp: Optional[int | float | str | datetime],
               to_timestamp: Optional[int | float | str | datetime] = None) -> Any:
             Abstract method for querying stored data within a given time range.
     """
 
-    def __init__(self, directory: Path):
+    def __init__(self, directory: Path, *args):
         """
         Initializes the database with a specified storage directory.
 
         Args:
             directory (Path): The root directory for storing OHLCV or order book data.
                               If the directory does not exist, it will be created.
+            args (Tuple[Any]): Any additional arguments required for initializing the database instance.
         """
         directory.mkdir(parents=True, exist_ok=True)
         self._directory = directory
@@ -84,5 +85,3 @@ class WriteOnlyDatabase(ABC):
     @abstractmethod
     def __exit__(self, exc_type, exc_val, exc_tb):
         pass
-
- 
