@@ -197,26 +197,6 @@ class Exchange(ABC):
         return set(Exchange._delisted_products)
 
     @staticmethod
-    def set_trading_products(products: Set[str]):
-        """Sets the set of currently traded products."""
-        Exchange._trading_products = products
-
-    @staticmethod
-    def set_non_trading_products(products: Set[str]):
-        """Sets the set of currently non-traded products."""
-        Exchange._non_trading_products = products
-
-    @staticmethod
-    def set_enlisted_products(products: Set[str]):
-        """Sets the set of recently enlisted products."""
-        Exchange._enlisted_products = products
-
-    @staticmethod
-    def set_delisted_products(products: Set[str]):
-        """Sets the set of recently delisted products."""
-        Exchange._delisted_products = products
-
-    @staticmethod
     def subscribe_to_product_updates(
         event_type: Literal["enlisted", "delisted"],
         *callbacks: CallbackType,
