@@ -25,6 +25,7 @@ Example:
         async for batch in ohlcv.fetch("2022-01-01", "2022-01-02"):
             process(batch)
 """
+
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, AsyncGenerator, Literal, Union, Dict
 import asyncio
@@ -64,6 +65,7 @@ class OHLCV_History(OHLCV_HistoryBase):
         _find_first_valid_timestamp(): Binary search for the first available candle.
         _handle_fetch_error(): Handles retry, skip, or termination logic on error.
     """
+
     COINBASE_OHLCV_URI = "https://api.exchange.coinbase.com/products/{}/candles"
     MAX_CANDLES = 300  # Max Candles allowed per request
     TIMEOUT = 10  # Request timeout in seconds
@@ -77,7 +79,9 @@ class OHLCV_History(OHLCV_HistoryBase):
         log_dir=Path("logs", "coinbase", "ohlcv"),
     ):
         super().__init__(
-            product, granularity if granularity is not None else 60, log_dir
+            product,
+            granularity if granularity is not None else 60,
+            log_dir / f"{product}.log",
         )
         self._session: Optional[aiohttp.ClientSession] = None
 
@@ -204,8 +208,8 @@ class OHLCV_History(OHLCV_HistoryBase):
         last_fetched = datetime.fromtimestamp(first_timestamp, tz=timezone.utc)
         finished = False
 
-        while last_fetched <= end_date and not finished:
-            result = await self.fetch_timeframe(last_fetched, end_date)
+        while last_fetched <= end_dt and not finished:
+            result = await self.fetch_timeframe(last_fetched, end_dt)
             if isinstance(result, str):
                 should_continue, new_last_fetched = (
                     await self._handle_fetch_error(result, last_fetched, end_dt)
@@ -216,7 +220,7 @@ class OHLCV_History(OHLCV_HistoryBase):
                 continue
 
             self._logger.debug(
-                f"📊 Downloaded {len(result)} candles for {self._product}: {last_fetched} → {self._adjust_end_time(last_fetched, end_date)}"
+                f"📊 Downloaded {len(result)} candles for {self._product}: {last_fetched} → {self._adjust_end_time(last_fetched, end_dt)}"
             )
             fetched_timestamps = [
                 candle[0] for candle in result
