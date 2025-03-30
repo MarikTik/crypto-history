@@ -15,17 +15,19 @@ Additionally, exchanges must implement the `fetch_products()` method to retrieve
 the current list of actively traded and non-traded products:
 
     class Coinbase(Exchange):
-        async def fetch_products(self):
+        @staticmethod
+        async def fetch_products():
             # Fetch trading pairs from Coinbase API
 
     class Kraken(Exchange):
-        async def fetch_products(self):
+        @staticmethod
+        async def fetch_products():
             # Fetch trading pairs from Kraken API
 
 Key Features:
 - Stores references to exchange-specific OHLCV and OrderBook classes.
 - Requires subclasses to implement `fetch_products()` for retrieving market pairs.
-- Provides automatic daily updates of trading pairs at a scheduled UTC time.
+- Provides flexible scheduling of trading pair updates based on timeframes and intervals.
 - Maintains sets of currently traded, non-traded, enlisted, and delisted products.
 
 This design allows direct class-level access to exchange-specific methods
@@ -33,15 +35,14 @@ without needing an instantiated `Exchange` object.
 """
 
 import asyncio
-from typing import Type, Set
+from typing import Type, Set, List, Tuple
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone, timedelta, time
-
+from pathlib import Path
+from database import *
+from loggers import logger_manager
 from .ohlcv_history import OHLCV_History
 from .order_book import OrderBook
-from database import *
-
-from loggers import logger_manager
 
 
 class Exchange(ABC):
@@ -52,14 +53,15 @@ class Exchange(ABC):
     - `ohlcv` and `order_book` with their respective implementations.
     - `fetch_products()` to fetch the list of traded/non-traded products.
 
-    If needed, subclasses can also override database implementations:
+    If needed, subclasses can also override database implementations.
 
     Example:
         class Coinbase(Exchange):
             ohlcv = CoinbaseOHLCV
             order_book = CoinbaseOrderBook
 
-            async def fetch_products(self):
+            @staticmethod
+            async def fetch_products():
                 # Fetch Coinbase trading pairs
 
         class Kraken(Exchange):
@@ -68,8 +70,16 @@ class Exchange(ABC):
             ohlcv_db = KrakenOHLCVDatabase
             order_book_db = KrakenOrderBookDatabase
 
-            async def fetch_products(self):
+            @staticmethod
+            async def fetch_products():
                 # Fetch Kraken trading pairs
+
+    Usage Example:
+        Kraken.init(Path("/path/to/logs"))
+        Kraken.schedule_updates([
+            ((time(15, 0), time(16, 0)), timedelta(minutes=15)),  # 3-4 PM UTC, every 15 mins
+            ((time(17, 0), time(18, 0)), timedelta(minutes=1))   # 5-6 PM UTC, every 1 min
+        ])
 
     Attributes:
         ohlcv (Type[OHLCV_History]): Reference to an exchange-specific OHLCV implementation.
@@ -88,31 +98,36 @@ class Exchange(ABC):
     ohlcv_db: Type[WriteOnlyDatabase] = OHLCV_Database
     order_book_db: Type[WriteOnlyDatabase] = OrderBookDatabase
 
-    def __init__(self, logs_path: Path):
-        """
-        Initializes the Exchange instance and schedules a daily trading pair update.
+    _trading_products: Set[str] = set()
+    _non_trading_products: Set[str] = set()
+    _enlisted_products: Set[str] = set()
+    _delisted_products: Set[str] = set()
+    _logger = None
+
+    @staticmethod
+    def init(logs_path: Path):
+        """Initializes the logger."""
+        if Exchange._logger is None:
+            Exchange._logger = logger_manager.get_logger(logs_path)
+
+    @staticmethod
+    async def schedule_updates(
+        schedule: List[Tuple[Tuple[time, time], timedelta]],
+    ):
+        """Schedules trading pair updates based on timeframes and intervals.
 
         Args:
-            logs_path (Path): Path to the log file directory.
-
-        This constructor:
-        - Initializes sets for tracking trading, non-trading, enlisted, and delisted products.
-        - Sets up logging for the exchange instance.
-        - Automatically schedules `_daily_update()` to run at 18:00 UTC every day.
-
-        The `_daily_update()` function will fetch trading pairs once per day
-        and update the internal state asynchronously.
+            schedule (List[Tuple[Tuple[time, time], timedelta]]):
+                A list of tuples, where each tuple contains:
+                - A tuple of start and end times (time objects) for the update schedule.
+                - A timedelta object representing the interval between updates.
         """
-        self._trading_products: Set[str] = []
-        self._non_trading_products: Set[str] = []
-        self._enlisted_products: Set[str] = []
-        self._delisted_products: Set[str] = []
-        self._logger = logger_manager.get_logger(logs_path)
-        # scheduling update at 18 PM UTC every day
-        asyncio.create_task(self._daily_update(time(18)))
+        for timeframe, interval in schedule:
+            asyncio.create_task(Exchange._scheduled_update(timeframe, interval))
 
+    @staticmethod
     @abstractmethod
-    async def fetch_products(self):
+    async def fetch_products() -> tuple[set[str], set[str]]:
         """
         Abstract method to fetch trading and non-trading products from the exchange API.
 
@@ -129,23 +144,48 @@ class Exchange(ABC):
         """
         pass
 
-    @property
-    def trading_products(self):
-        return self._trading_products
+    @staticmethod
+    def trading_products() -> Set[str]:
+        """Returns a copy of the set of currently traded products."""
+        return set(Exchange._trading_products)
 
-    @property
-    def non_trading_products(self):
-        return self._non_trading_products
+    @staticmethod
+    def non_trading_products() -> Set[str]:
+        """Returns a copy of the set of currently non-traded products."""
+        return set(Exchange._non_trading_products)
 
-    @property
-    def enlisted_products(self):
-        return self._enlisted_products
+    @staticmethod
+    def enlisted_products() -> Set[str]:
+        """Returns a copy of the set of recently enlisted products."""
+        return set(Exchange._enlisted_products)
 
-    @property
-    def delisted_products(self):
-        return self._delisted_products
+    @staticmethod
+    def delisted_products() -> Set[str]:
+        """Returns a copy of the set of recently delisted products."""
+        return set(Exchange._delisted_products)
 
-    async def _update_trading_products(self):
+    @staticmethod
+    def set_trading_products(products: Set[str]):
+        """Sets the set of currently traded products."""
+        Exchange._trading_products = products
+
+    @staticmethod
+    def set_non_trading_products(products: Set[str]):
+        """Sets the set of currently non-traded products."""
+        Exchange._non_trading_products = products
+
+    @staticmethod
+    def set_enlisted_products(products: Set[str]):
+        """Sets the set of recently enlisted products."""
+        Exchange._enlisted_products = products
+
+    @staticmethod
+    def set_delisted_products(products: Set[str]):
+        """Sets the set of recently delisted products."""
+        Exchange._delisted_products = products
+
+    @staticmethod
+    async def _update_trading_products():
         """
         Fetches the latest trading products and updates the internal state.
 
@@ -160,11 +200,11 @@ class Exchange(ABC):
 
         Handles API failures gracefully, preventing overwrites if an error occurs.
         """
-        logger = self._logger
+        logger = Exchange._logger
         try:
-            new_trading, new_non_trading = await self.fetch_products()
+            new_trading, new_non_trading = await Exchange.fetch_products()
 
-            old_trading = self._trading_products
+            old_trading = Exchange._trading_products
 
             enlisted_products = new_trading - old_trading  # New products
             delisted_products = (
@@ -172,12 +212,12 @@ class Exchange(ABC):
             )  # Pairs removed from trading
 
             # Update trading & non-trading sets
-            self._trading_products = new_trading
-            self._non_trading_products = new_non_trading
+            Exchange._trading_products = new_trading
+            Exchange._non_trading_products = new_non_trading
 
             # Track only **newly** enlisted and delisted pairs
-            self._enlisted_products = enlisted_products
-            self._delisted_products = delisted_products
+            Exchange._enlisted_products = enlisted_products
+            Exchange._delisted_products = delisted_products
 
             if enlisted_products:
                 logger.info(f"Enlisted products: {enlisted_products}")
@@ -189,36 +229,34 @@ class Exchange(ABC):
         except Exception as e:
             print(f"Unexpected error in update_trading_pairs: {e}")
 
-    async def _daily_update(self, when: time):
+    @staticmethod
+    async def _scheduled_update(
+        timeframe: Tuple[time, time], interval: timedelta
+    ):
         """
-        Runs `_update_trading_products()` at a scheduled time every day.
+        Runs `_update_trading_products()` within a specified timeframe and interval.
 
         Args:
-            when (time): The UTC time at which `_update_trading_products()` should run.
-
-        This function:
-        - Calculates the next execution time.
-        - Waits asynchronously until that time.
-        - Executes `_update_trading_products()` exactly at the scheduled time.
-        - Reschedules itself for the next day.
-
-        Ensures efficient scheduling without CPU-intensive polling.
+            timeframe (Tuple[time, time]): Start and end times (UTC) for the schedule.
+            interval (timedelta): The time interval between updates.
         """
+        start_time, end_time = timeframe
+
         while True:
-            now = datetime.now(timezone.utc)
-
-            # Schedule next execution at the given time today
-            next_run = datetime.combine(now.date(), when, tzinfo=timezone.utc)
-
-            # If it's already past the target time today, schedule for tomorrow
-            if now >= next_run:
-                next_run += timedelta(days=1)
-
-            sleep_seconds = (next_run - now).total_seconds()
-            self._logger.info(
-                f"⏳ Next update scheduled for {next_run} UTC (in {sleep_seconds:.2f} seconds)"
-            )
-
-            await asyncio.sleep(sleep_seconds)
-
-            await self._update_trading_products()
+            now = datetime.now(timezone.utc).time()
+            if start_time <= now <= end_time:
+                await Exchange._update_trading_products()
+                await asyncio.sleep(interval.total_seconds())
+            else:
+                # Wait until the next start time
+                now_dt = datetime.now(timezone.utc)
+                next_start = datetime.combine(
+                    now_dt.date(), start_time, tzinfo=timezone.utc
+                )
+                if now > end_time:
+                    next_start += timedelta(days=1)
+                sleep_seconds = (next_start - now_dt).total_seconds()
+                Exchange._logger.info(
+                    f"⏳ Next update scheduled for {next_start} UTC (in {sleep_seconds:.2f} seconds)"
+                )
+                await asyncio.sleep(sleep_seconds)
