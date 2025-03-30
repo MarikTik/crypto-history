@@ -254,7 +254,7 @@ class Exchange(ABC):
         if event_type not in Exchange._product_update_callbacks:
             raise ValueError(f"Invalid event type: {event_type}")
         for callback in Exchange._product_update_callbacks[event_type]:
-            callback(products)  # Call the callback function
+            callback(products.copy())  # Call the callback function
 
     @staticmethod
     async def _update_trading_products():
