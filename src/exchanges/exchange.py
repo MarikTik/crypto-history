@@ -40,7 +40,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timezone, timedelta, time
 from pathlib import Path
 from database import *
-from loggers import logger_manager
+from loggers import logger_manager, NullLogger
 from .ohlcv_history import OHLCV_History
 from .order_book import OrderBook
 
@@ -102,13 +102,12 @@ class Exchange(ABC):
     _non_trading_products: Set[str] = set()
     _enlisted_products: Set[str] = set()
     _delisted_products: Set[str] = set()
-    _logger = None
+    _logger = NullLogger()
 
     @staticmethod
-    def init(logs_path: Path):
+    def configure_logging(logs_path: Path):
         """Initializes the logger."""
-        if Exchange._logger is None:
-            Exchange._logger = logger_manager.get_logger(logs_path)
+        Exchange._logger = logger_manager.get_logger(logs_path)
 
     @staticmethod
     async def schedule_updates(
@@ -225,9 +224,9 @@ class Exchange(ABC):
                 logger.info(f"Delisted products: {delisted_products}")
 
         except RuntimeError as e:
-            print(f"Trading pair update failed: {e}")
+            logger.error(f"Trading pair update failed: {e}")
         except Exception as e:
-            print(f"Unexpected error in update_trading_pairs: {e}")
+            logger.error(f"Unexpected error in update_trading_pairs: {e}")
 
     @staticmethod
     async def _scheduled_update(
@@ -241,7 +240,7 @@ class Exchange(ABC):
             interval (timedelta): The time interval between updates.
         """
         start_time, end_time = timeframe
-
+        logger = Exchange._logger
         while True:
             now = datetime.now(timezone.utc).time()
             if start_time <= now <= end_time:
@@ -256,7 +255,7 @@ class Exchange(ABC):
                 if now > end_time:
                     next_start += timedelta(days=1)
                 sleep_seconds = (next_start - now_dt).total_seconds()
-                Exchange._logger.info(
+                logger.info(
                     f"⏳ Next update scheduled for {next_start} UTC (in {sleep_seconds:.2f} seconds)"
                 )
                 await asyncio.sleep(sleep_seconds)
