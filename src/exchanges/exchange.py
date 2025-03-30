@@ -53,6 +53,9 @@ class Exchange(ABC):
     - `ohlcv` and `order_book` with their respective implementations.
     - `fetch_products()` to fetch the list of traded/non-traded products.
 
+    It is not obligatory but recommended to:
+    - Override `start_product_updates` method to schedule appropriate update times
+
     If needed, subclasses can also override database implementations.
 
     Example:
@@ -63,6 +66,16 @@ class Exchange(ABC):
             @staticmethod
             async def fetch_products():
                 # Fetch Coinbase trading pairs
+
+            @staticmethod
+            def start_product_updates():
+                async def _schedule():
+                    start_utc = time(18, 0, tzinfo=timezone.utc)
+                    end_utc = time(22, 30, tzinfo=timezone.utc)
+                    await Coinbase.schedule_updates(
+                        [((start_utc, end_utc), timedelta(minutes=1))]
+                    )
+                asyncio.create_task(_schedule())
 
         class Kraken(Exchange):
             ohlcv = KrakenOHLCV
@@ -75,10 +88,12 @@ class Exchange(ABC):
                 # Fetch Kraken trading pairs
 
     Usage Example:
-        Kraken.init(Path("/path/to/logs"))
-        Kraken.schedule_updates([
-            ((time(15, 0), time(16, 0)), timedelta(minutes=15)),  # 3-4 PM UTC, every 15 mins
-            ((time(17, 0), time(18, 0)), timedelta(minutes=1))   # 5-6 PM UTC, every 1 min
+            async def main():
+                Coinbase.configure_logging("path/to/log")
+                Coinbase.start_product_updates()
+
+            if __name__ == "__main__"
+                asyncio.run(main)
         ])
 
     Attributes:
@@ -123,6 +138,16 @@ class Exchange(ABC):
         """
         for timeframe, interval in schedule:
             asyncio.create_task(Exchange._scheduled_update(timeframe, interval))
+
+    @staticmethod
+    def start_product_updates():
+        """
+        Starts the background task that updates the exchange's trading products.
+
+        Each subclass **must implement** this method to schedule the product updates
+        at the appropriate time(s).
+        """
+        pass
 
     @staticmethod
     @abstractmethod

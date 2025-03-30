@@ -16,6 +16,7 @@ UTC timeframe.
 """
 
 import aiohttp
+import asyncio
 from typing import Dict, List, Tuple
 from datetime import time, timedelta, timezone
 
@@ -76,8 +77,15 @@ class Coinbase(Exchange):
                 raise RuntimeError(f"Unexpected error: {e}")
         return trading_products, non_trading_products
 
+    @staticmethod
+    def start_product_updates():
+        """Starts the Coinbase product update task."""
 
-start_utc = time(18, 0, tzinfo=timezone.utc)
-end_utc = time(22, 30, tzinfo=timezone.utc)
-# scheduling updates with one minute granularity  on the interval 18:00 - 22:30 UTC
-Coinbase.schedule_updates([((start_utc, end_utc), timedelta(minutes=1))])
+        async def _schedule():
+            start_utc = time(18, 0, tzinfo=timezone.utc)
+            end_utc = time(22, 30, tzinfo=timezone.utc)
+            await Coinbase.schedule_updates(
+                [((start_utc, end_utc), timedelta(minutes=1))]
+            )
+
+        asyncio.create_task(_schedule())
