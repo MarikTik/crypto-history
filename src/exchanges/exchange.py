@@ -179,22 +179,22 @@ class Exchange(ABC):
     @staticmethod
     def trading_products() -> Set[str]:
         """Returns a copy of the set of currently traded products."""
-        return set(Exchange._trading_products)
+        return Exchange._trading_products.copy()
 
     @staticmethod
     def non_trading_products() -> Set[str]:
         """Returns a copy of the set of currently non-traded products."""
-        return set(Exchange._non_trading_products)
+        return Exchange._non_trading_products.copy()
 
     @staticmethod
     def enlisted_products() -> Set[str]:
         """Returns a copy of the set of recently enlisted products."""
-        return set(Exchange._enlisted_products)
+        return Exchange._enlisted_products.copy()
 
     @staticmethod
     def delisted_products() -> Set[str]:
         """Returns a copy of the set of recently delisted products."""
-        return set(Exchange._delisted_products)
+        return Exchange._delisted_products.copy()
 
     @staticmethod
     def subscribe_to_product_updates(
@@ -206,7 +206,7 @@ class Exchange(ABC):
 
         Args:
             event_type (str): The type of event to subscribe to (e.g., "enlisted", "delisted").
-            callbacks (Callable[[Set[str]], None]): A tuple of callable functions that will be called
+            callbacks (Tuple[Callable[[Set[str]], None]]): A tuple of callable functions that will be called
                                                   when the event occurs. It will receive a set
                                                   of product strings as an argument.
 
@@ -228,7 +228,7 @@ class Exchange(ABC):
 
         Args:
             event_type (str): The type of event to unsubscribe from (e.g., "enlisted", "delisted").
-            callbacks (Callable[[Set[str]], None]): The callback functions to unsubscribe.
+            callbacks (Tuple[Callable[[Set[str]], None]]): The callback functions to unsubscribe.
 
         Raises:
             ValueError: If the event_type is invalid.
