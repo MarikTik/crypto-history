@@ -35,7 +35,7 @@ without needing an instantiated `Exchange` object.
 """
 
 import asyncio
-from typing import Type, Set, List, Tuple
+from typing import Type, Set, List, Tuple, Literal
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone, timedelta, time
 from pathlib import Path
@@ -105,8 +105,12 @@ class Exchange(ABC):
         _non_trading_products (Set[str]): Products not currently being traded.
         _enlisted_products (Set[str]): Most recently enlisted products.
         _delisted_products (Set[str]): Most recently delisted products.
+        _product_update_callbacks: A dictionary to store callbacks for product updates.
+                                      Keys are event types (e.g., "enlisted", "delisted").
+                                      Values are lists of callable functions.
     """
 
+    CallbackType = Callable[[Set[str]], None]
     ohlcv: Type[OHLCV_History]
     order_book: Type[OrderBook]
 
@@ -117,6 +121,10 @@ class Exchange(ABC):
     _non_trading_products: Set[str] = set()
     _enlisted_products: Set[str] = set()
     _delisted_products: Set[str] = set()
+    _product_update_callbacks: Dict[str, CallbackType] = {
+        "enlisted": set(),
+        "delisted": set(),
+    }
     _logger = NullLogger()
 
     @staticmethod
@@ -209,6 +217,66 @@ class Exchange(ABC):
         Exchange._delisted_products = products
 
     @staticmethod
+    def subscribe_to_product_updates(
+        event_type: Literal["enlisted", "delisted"],
+        *callbacks: CallbackType,
+    ):
+        """
+        Subscribes a callback function to product update events.
+
+        Args:
+            event_type (str): The type of event to subscribe to (e.g., "enlisted", "delisted").
+            callbacks (Callable[[Set[str]], None]): A tuple of callable functions that will be called
+                                                  when the event occurs. It will receive a set
+                                                  of product strings as an argument.
+
+        Raises:
+            ValueError: If the event_type is invalid.
+        """
+        if event_type not in Exchange._product_update_callbacks:
+            raise ValueError(f"Invalid event type: {event_type}")
+        for callback in callbacks:
+            Exchange._product_update_callbacks[event_type].add(callback)
+
+    @staticmethod
+    def unsubscribe_from_product_updates(
+        event_type: Literal["enlisted", "delisted"],
+        *callbacks: CallbackType,
+    ):
+        """
+        Unsubscribes a callback function from product update events.
+
+        Args:
+            event_type (str): The type of event to unsubscribe from (e.g., "enlisted", "delisted").
+            callbacks (Callable[[Set[str]], None]): The callback functions to unsubscribe.
+
+        Raises:
+            ValueError: If the event_type is invalid.
+        """
+        logger = Exchange._logger
+        if event_type not in Exchange._product_update_callbacks:
+            raise ValueError(f"Invalid event type: {event_type}")
+        try:
+            for callback in callbacks:
+                Exchange._product_update_callbacks[event_type].remove(callback)
+        except ValueError:
+            logger.debug(f"Callback not found for event type '{event_type}'.")
+
+    @staticmethod
+    async def _notify_product_updates(event_type: str, products: Set[str]):
+        """
+        Notifies all subscribed callbacks of a product update event.
+
+        Args:
+            event_type (str): The type of event (e.g., "enlisted", "delisted").
+            products (Set[str]): The set of products affected by the event.
+        """
+        if event_type not in Exchange._product_update_callbacks:
+            raise ValueError(f"Invalid event type: {event_type}")
+        for callback in Exchange._product_update_callbacks[event_type]:
+            callback(products)  # Call the callback function
+
+    @staticmethod
     async def _update_trading_products():
         """
         Fetches the latest trading products and updates the internal state.
@@ -243,6 +311,13 @@ class Exchange(ABC):
             Exchange._enlisted_products = enlisted_products
             Exchange._delisted_products = delisted_products
 
+            # Notify subscriber callbacks
+            await Exchange._notify_product_updates(
+                "enlisted", enlisted_products
+            )
+            await Exchange._notify_product_updates(
+                "delisted", delisted_products
+            )
             if enlisted_products:
                 logger.info(f"Enlisted products: {enlisted_products}")
             if delisted_products:
